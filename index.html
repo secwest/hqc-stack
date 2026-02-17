@@ -65,7 +65,7 @@
   #flowchart-wrap .fc-node:hover rect { stroke-opacity: 0.8 !important; }
 
   /* Detail panel */
-  #detail { border-top: 1px solid var(--border); padding: 12px; flex-shrink: 0; max-height: 340px; overflow-y: auto; transition: background 0.3s; }
+  #detail { border-top: 1px solid var(--border); padding: 12px; flex-shrink: 0; max-height: 440px; overflow-y: auto; transition: background 0.3s; }
   #detail .det-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
   #detail .det-dot { width: 10px; height: 10px; border-radius: 2px; }
   #detail .det-name { font-size: 12px; font-weight: 700; }
@@ -109,7 +109,9 @@
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  #copyright { position: fixed; bottom: 6px; right: 10px; font-size: 10px; color: #4a5568; opacity: 0.7; font-family: sans-serif; z-index: 100; pointer-events: none; }
 </style>
+<div id="copyright">© 2026 Dragos Ruiu</div>
 </head>
 <body>
 <div id="app">
@@ -173,7 +175,7 @@ const PHASES = [
     layers:[
       {name:"Seed Generation",
        math:"seedKEM ←$ B³²; (seedPKE, σ) ← SHA3-512(0x00 ‖ seedKEM)",
-       desc:"A 32-byte seed seedKEM is drawn from an approved RBG. SHA3-512 with domain separator 0x00 expands it into seedPKE (drives key material generation) and σ (32-byte implicit-rejection seed stored in the decapsulation key for the HHK transform). σ is never revealed.",
+       desc:"Implementation: draw 32 bytes from DRBG. SHA3-512 on (0x00 ‖ seedKEM) yields 64 bytes: seedPKE = first 32, σ = last 32. Domain separator 0x00 distinguishes this from other hash calls. σ is stored in dkKEM and used only during implicit rejection in decapsulation — must never be transmitted. seedKEM is also stored to enable key validation. Security: domain separation (the 0x00 prefix byte) prevents cross-context hash collisions — without it, an adversary could construct inputs to the keygen hash that collide with inputs to the encapsulation hash (0x04), potentially creating related-key scenarios. The σ seed provides the implicit rejection capability: if σ were absent, a decapsulator would need to return ⊥ on invalid ciphertexts, creating a detectable oracle that enables adaptive chosen-ciphertext key recovery (Hofheinz-Hövelmanns-Kiltz attack model).",
        color:"#94a3b8",type:"input",
        algRef:"KEM.KeyGen lines 1-2",
        pseudo:[
@@ -183,7 +185,7 @@ const PHASES = [
        ]},
       {name:"Public Vector Generation",
        math:"h ← Sample(XOF(seedPKE.ek))",
-       desc:"SHAKE-256 as XOF expands seedPKE.ek into a uniformly random vector h ∈ R = F₂[X]/(Xⁿ−1). h defines one row of a quasi-cyclic parity-check matrix H = (Iₙ | rot(h)), forming the public random code. For HQC-128: n = 17669 (primitive prime). h is deterministic from seedPKE.ek, so it can be regenerated from the public key seed.",
+       desc:"Implementation: SHA3-512 on (0x01 ‖ seedPKE) splits into seedPKE.dk and seedPKE.ek. SHAKE-256 initialized with seedPKE.ek streams uniform random bits. Read ⌈log₂(n)⌉-bit chunks, reject values ≥ n to get uniform indices for building h. For HQC-128: n=17669, h occupies ⌈17669/64⌉ = 277 uint64 words (≈2.2 KB). h is deterministic from seedPKE.ek — both parties can regenerate it identically from the public key seed. Security: h must be indistinguishable from a uniformly random binary polynomial for the DQCSD assumption to hold. Rejection sampling ensures this uniformity — truncation or modular reduction would introduce detectable statistical bias. The prime n=17669 is chosen so that Xⁿ−1 has a large irreducible factor over F₂, which prevents algebraic attacks that exploit factorization of the ring modulus (analogous to the weak-ideal attacks on power-of-2 cyclotomics in lattice schemes). Using a seed rather than explicit h in the public key compresses ek and prevents an adversary from choosing h with special algebraic structure.",
        color:"#22d3ee",type:"expand",
        algRef:"PKE.KeyGen line 2",
        pseudo:[
@@ -192,7 +194,7 @@ const PHASES = [
        ]},
       {name:"Secret Vector y",
        math:"y ← SampleFixedWeightVect$(XOF(seedPKE.dk), ω)",
-       desc:"Sample a vector y ∈ R with exactly ω nonzero coordinates (Hamming weight ω) using rejection sampling from SHAKE-256 output. For HQC-128: ω = 66. The fixed-weight constraint is essential: (1) it calibrates the noise level for correct decoding, and (2) prevents statistical attacks that exploit weight variance. y is part of the secret key and used during decapsulation to compute u·y.",
+       desc:"Implementation: SHAKE-256(seedPKE.dk) streams random indices via rejection sampling (reject ≥ n and reject duplicates). Set exactly ω distinct bit positions to 1, all others 0. For HQC-128: ω=66 out of n=17669 positions (density ≈0.37%). Constant-time implementation: use Fisher-Yates on a full index array, or constant-time sorting of random indices. y is stored in dkKEM and used during decapsulation for the u·y multiplication. Security: the fixed Hamming weight ω is critical for two reasons. (1) Correctness: the decryption noise is bounded by products of sparse vectors, and ω calibrates this noise to stay within RMRS correction capacity. (2) Security against statistical attacks: if y were sampled with variable weight (e.g., each bit set independently with probability ω/n), an adversary could exploit weight variance to distinguish the public syndrome s = x + h·y from random, weakening the DQCSD assumption. Constant-time sampling prevents timing side-channels that would leak y's support positions.",
        color:"#34d399",type:"sample",
        algRef:"PKE.KeyGen line 3",
        pseudo:[
@@ -200,7 +202,7 @@ const PHASES = [
        ]},
       {name:"Secret Vector x",
        math:"x ← SampleFixedWeightVect$(XOF(seedPKE.dk), ω)",
-       desc:"Sample a second independent vector x ∈ R with Hamming weight ω, using the same XOF stream (continued from y sampling). x acts as a masking term in the public syndrome s = x + h·y. Together, (x, y) form the 3-QCSD instance: recovering (x, y) from (h, s) requires solving the decisional quasi-cyclic syndrome decoding problem, believed hard even for quantum adversaries. Note: x is not stored in the decapsulation key (2025 spec revision) since it is not needed for decapsulation.",
+       desc:"Implementation: continue reading from the same SHAKE-256(seedPKE.dk) stream (state persists from y sampling). Sample ω distinct positions for x independently. x is used only in s = x + h·y during keygen and is NOT stored in the decapsulation key (2025 spec revision). Security: recovering (x,y) from public (h, s) requires solving 3-DQCSD-PT, the decisional quasi-cyclic syndrome decoding problem with parity and truncation. The best known attack is information-set decoding (ISD) with cost 2^¹²⁸ for HQC-128. Omitting x from dkKEM (2025 revision) reduces the attack surface if the decapsulation key is compromised — an attacker who obtains dk learns y but not x, though x can be derived from s − h·y if both dk and ek are known. The two-vector structure (x, y) rather than a single secret vector provides the 'syndrome decoding' hardness — with only one vector, the problem reduces to simple code distinguishing.",
        color:"#f59e0b",type:"sample",
        algRef:"PKE.KeyGen line 4",
        pseudo:[
@@ -208,7 +210,7 @@ const PHASES = [
        ]},
       {name:"Quasi-Cyclic Multiplication",
        math:"h·y  in  R = F₂[X]/(Xⁿ−1)",
-       desc:"Binary polynomial multiplication modulo Xⁿ−1 computes h·y. Since both are elements of R, this is equivalent to computing rot(h)·yᵀ (circulant matrix-vector product). Implemented via schoolbook, Karatsuba, or Toom-Cook algorithms over packed 64-bit words. For HQC-128: degree bound n=17669, so polynomials occupy ⌈17669/64⌉ = 277 words. This is the dominant computational cost of key generation.",
+       desc:"Implementation: multiply two binary polynomials of degree < n, reduce mod (Xⁿ−1). Since both are packed in uint64 arrays, use Toom-Cook-3 or Karatsuba splitting recursively down to schoolbook base case. For HQC-128 (n=17669, 277 words): Toom-Cook-3 gives ~O(n^1.47) word operations. Alternative: exploit y's sparsity (only ω=66 set bits) with sparse-times-dense multiply — for each set bit position i in y, XOR h shifted by i into the accumulator. Dominant cost of keygen. Security: the polynomial multiplication itself must be constant-time — data-dependent branching in Karatsuba recursion or early-termination in sparse multiply would leak information about y's support positions. For the sparse-times-dense approach, the loop count is fixed at ω regardless of the actual positions, but memory access patterns must also be uniform (or use oblivious RAM techniques) to prevent cache-timing attacks.",
        color:"#f87171",type:"compute",
        algRef:"PKE.KeyGen line 5 (partial)",
        pseudo:[
@@ -217,7 +219,7 @@ const PHASES = [
        ]},
       {name:"Syndrome Computation",
        math:"s = x + h·y",
-       desc:"Vector addition (XOR) over F₂ⁿ completes the public syndrome. s encodes the 2-QCSD instance: the pair (h, s) is computationally indistinguishable from a uniform random pair under the DQCSD assumption. Unlike lattice-based schemes that use additive noise in ℤq, HQC works in F₂ with exact Hamming weight constraints. The syndrome s together with h forms the encryption (public) key.",
+       desc:"Implementation: XOR the 277-word packed representation of x with the h·y product. All arithmetic in F₂ — addition = XOR, no carries. The pair (h, s) is the public QCSD instance. Unlike lattice-based schemes that use ℤq arithmetic with Gaussian/CBD noise, HQC works entirely in F₂ with exact Hamming weight constraints. s is ⌈n/8⌉ = 2209 bytes for HQC-128. Security: the syndrome s = x + h·y is the public key's core — it embeds the 2-QCSD hard problem. The quasi-cyclic structure (multiplication in R = F₂[X]/(Xⁿ−1)) enables compact key representation but introduces algebraic structure that must be carefully analyzed. The choice of prime n ensures that the factorization of Xⁿ−1 over F₂ does not contain small factors that would enable algebraic decoding attacks (Sendrier-Tillich). The DQCSD assumption states that (h, x+h·y) is computationally indistinguishable from (h, uniform) — this is the code-based analogue of the LWE assumption.",
        color:"#fb923c",type:"compute",
        algRef:"PKE.KeyGen line 5",
        pseudo:[
@@ -227,7 +229,7 @@ const PHASES = [
        ]},
       {name:"Key Encoding & Output",
        math:"ekKEM = (h, s)   dkKEM = (ekKEM, y, σ, seedKEM)",
-       desc:"Encapsulation key: public syndrome s and random vector h (or just seedPKE.ek from which h can be regenerated). Decapsulation key bundles: the full ekKEM (for FO re-encryption check), secret vector y, implicit-rejection seed σ, and seedKEM (enables keypair validation). Note: x is omitted from dkKEM since decapsulation only needs y. The compressed format stores just seedKEM (40 bytes) since all other components are derivable.",
+       desc:"Implementation: ekKEM = (seedPKE.ek ‖ s), since h is regenerable from seedPKE.ek. Compressed ek size for HQC-128: 32 + ⌈17669/8⌉ = 2241 bytes. Full ek with explicit h: 2×2209 + 32 ≈ 4450 bytes. dkKEM bundles: full ekKEM (for FO re-encryption), y (sparse, stored as set-bit indices or packed bitfield), σ (32 bytes), seedKEM (32 bytes). Total dk ≈ 4562 bytes for HQC-128. Compact form stores only seedKEM (32 bytes) since all components are deterministically derivable. Security: storing the full ekKEM inside dkKEM (rather than just the seed) prevents a subtle attack where an adversary modifies the stored ek after keygen — during FO re-encryption, the decapsulator uses the stored ek, so a tampered ek would cause the re-encryption check to always fail, effectively disabling CCA2 protection. The seedKEM is retained for key-pair validation (FIPS 140-3 requirement): implementations can re-derive the full keypair from seedKEM and verify consistency.",
        color:"#22d3ee",type:"output",
        algRef:"KEM.KeyGen lines 3-5",
        pseudo:[
@@ -256,7 +258,7 @@ const PHASES = [
     layers:[
       {name:"Message & Salt Generation",
        math:"m ←$ F₂ᵏ,  salt ←$ B¹⁶",
-       desc:"A random k-bit message m is drawn from the RBG (k = 128 for HQC-128). This is NOT plaintext — it is an ephemeral seed from which the shared secret and noise vectors are deterministically derived. A 16-byte salt is also sampled to provide multi-ciphertext attack resistance. The salt is transmitted in the clear alongside the ciphertext.",
+       desc:"Implementation: draw k/8 bytes (16 bytes for HQC-128, k=128) for m and 16 bytes for salt from DRBG. m is an internal random seed, not user plaintext. The salt is transmitted in the clear as part of cKEM. Security: the salt is HQC's defense against multi-target attacks. Without it, an adversary who intercepts N ciphertexts from N different public keys can amortize the cost of brute-forcing m — effectively reducing security by log₂(N) bits (Bader-Jager-Li-Schäge multi-target attack). The salt binds the noise derivation to this specific ciphertext instance, forcing the adversary to attack each ciphertext independently. This is a significant practical concern because deployed PKI systems may have millions of active public keys. The 128-bit salt provides 128 bits of multi-target resistance.",
        color:"#94a3b8",type:"input",
        algRef:"KEM.Encaps lines 1-2",
        pseudo:[
@@ -265,7 +267,7 @@ const PHASES = [
        ]},
       {name:"Noise Coin Derivation",
        math:"(K, θ) ← SHA3-512(0x04 ‖ m ‖ ekKEM ‖ salt)",
-       desc:"SHA3-512 with domain separator 0x04 derives two 32-byte values: K (raw shared secret material) and θ (deterministic randomness coin for encryption). Including the full ekKEM binds the noise to this specific public key. Including salt prevents multi-ciphertext attacks. θ drives all ephemeral vector sampling, enabling the FO re-encryption verification in decapsulation.",
+       desc:"Implementation: SHA3-512 on (0x04 ‖ m ‖ ekKEM ‖ salt). Output 64 bytes: K = first 32 (raw shared secret), θ = last 32 (noise derivation coin). Including the full ekKEM binds noise to this public key (prevents key-substitution attacks). Including salt prevents multi-ciphertext batch attacks. Domain separator 0x04 distinguishes this hash call from keygen (0x00, 0x01) and rejection (0x06). Security: hashing the full ekKEM (not just a hash of it, unlike ML-KEM) provides stronger binding — it prevents an adversary from finding two different public keys that hash to the same value and then replaying ciphertexts between them. The deterministic derivation of θ from m is the core of the SFO⊥ₘ (salted Fujisaki-Okamoto) transform: because all encryption randomness is a deterministic function of (m, ek, salt), the decapsulator can verify ciphertext integrity by re-encrypting m' and comparing.",
        color:"#f59e0b",type:"expand",
        algRef:"KEM.Encaps line 3",
        pseudo:[
@@ -273,7 +275,7 @@ const PHASES = [
        ]},
       {name:"Ephemeral Vector Sampling",
        math:"r₁ ← SampleFWV$(θ, ωr),  r₂ ← SampleFWV$(θ, ωr)",
-       desc:"Two ephemeral vectors r₁, r₂ ∈ R each with fixed Hamming weight ωr are sampled from SHAKE-256(θ). For HQC-128: ωr = 77. These are analogous to the ephemeral secret y in ML-KEM's encapsulation. r₁ masks the ciphertext u, while r₂ carries the shared structure (h·r₂ parallels h·y in keygen). Both are deterministic from θ, enabling FO re-encryption.",
+       desc:"Implementation: initialize SHAKE-256(θ), stream random indices via rejection sampling to set exactly ωr bit positions per vector. For HQC-128: ωr=77. Both r₁ and r₂ use the same XOF instance (continuing state). r₂ participates in two polynomial multiplications (h·r₂ for u, and s·r₂ for v), making it the most computationally significant ephemeral value. All sampling must be constant-time to prevent timing side-channels. Security: ωr=77 is chosen larger than ω=66 (the secret key weight) to provide additional noise margin during decryption — the products x·r₂ and r₁·y contribute to the decryption noise, and their expected Hamming weight scales with ω·ωr. The fixed-weight constraint on r₁, r₂ (like y, x) prevents statistical attacks. If weights varied, an adversary could correlate observed ciphertext structure with the weight distribution to distinguish real from simulated ciphertexts, breaking IND-CPA.",
        color:"#34d399",type:"sample",
        algRef:"PKE.Encrypt lines 1-2",
        pseudo:[
@@ -282,7 +284,7 @@ const PHASES = [
        ]},
       {name:"Error Vector Sampling",
        math:"e ← SampleFixedWeightVect$(XOF(θ), ωe)",
-       desc:"An error vector e ∈ R with Hamming weight ωe is sampled. For HQC-128: ωe = 77. This error masks the encoded message in v, preventing the adversary from extracting m·G directly. The total noise budget in the ciphertext channel is bounded by ω(x·r₂) + ω(y·r₁) + ω(e), which must stay within the error-correction capacity of the concatenated RMRS code.",
+       desc:"Implementation: continue SHAKE-256(θ) stream to sample e with exactly ωe=77 set bits (HQC-128). The total noise after decryption is wt(x·r₂) + wt(e) + wt(r₁·y). The RMRS code must correct this many errors. For HQC-128, the expected noise weight is bounded by ω·ωr/n ≈ 66×77/17669 ≈ 0.29 per coefficient on average from each product, plus the ωe=77 direct error bits. Security: the error vector e serves a role analogous to e₂ in ML-KEM — it prevents the adversary from computing Encode(m) by subtracting the public s·r₂ from v. Without e, an adversary who knows (h, s, r₂) could recover v − s·r₂ = Encode(m) directly, bypassing the QCSD hard problem. The ωe weight is tuned so total decryption noise stays within RMRS correction capacity with DFR < 2⁻¹²⁸, while being large enough that e's contribution meaningfully obscures the encoded message structure.",
        color:"#f59e0b",type:"sample",
        algRef:"PKE.Encrypt line 3",
        pseudo:[
@@ -290,7 +292,7 @@ const PHASES = [
        ]},
       {name:"Message Encoding (RMRS)",
        math:"c = Encode(m) via Reed-Solomon ∘ Reed-Muller",
-       desc:"The k-bit message m is encoded using a concatenated code C: an outer shortened Reed-Solomon code over GF(2⁸) followed by an inner duplicated Reed-Muller code RM(1,7). For HQC-128: the RS code is [n₁=46, k₁=16, δ=16] over GF(2⁸), the RM code is RM(1,7) with multiplicity 3, producing codewords of length n₁·n₂ = 46·384 = 17664 bits (padded to n=17669). This heavy redundancy enables correction of the noise introduced during encryption.",
+       desc:"Implementation: (1) Outer RS encode: treat m as k₁=16 symbols over GF(2⁸), encode to n₁=46 symbols using shortened RS[46,16,δ=16] — compute 30 check symbols via polynomial division over GF(2⁸) with generator polynomial. (2) Inner RM encode: each 8-bit RS symbol → RM(1,7) codeword (128 bits), replicated ×3 → 384 bits per symbol. Total: 46×384 = 17664 bits, zero-padded to n=17669. The heavy redundancy (rate ≈ 128/17669 ≈ 0.7%) enables correction of the sparse noise. Security: the concatenated code design is a deliberate trade-off. RM(1,7) alone has minimum distance 64, correcting up to 31 errors per block — but the noise from sparse-times-sparse products is not uniformly distributed across blocks. The ×3 repetition of each RM codeword and the outer RS layer provide burst-error resilience. The RS minimum distance δ=16 means up to 15 symbol errors (RM block failures) can be corrected. This two-layer approach ensures that even if noise is concentrated in certain blocks (which can happen when the sparse vector supports partially overlap), the overall DFR stays below 2⁻¹²⁸.",
        color:"#a78bfa",type:"encode",
        algRef:"PKE.Encrypt line 5 (implicit)",
        pseudo:[
@@ -301,7 +303,7 @@ const PHASES = [
        ]},
       {name:"Compute Ciphertext u",
        math:"u = r₁ + h·r₂   (in R)",
-       desc:"Quasi-cyclic polynomial multiply h·r₂ followed by XOR with r₁. This parallels the keygen structure: just as s = x + h·y, here u = r₁ + h·r₂. The receiver will compute u·y to extract the shared lattice-like structure. The polynomial multiplication is the dominant cost of encryption (same Toom-Cook/Karatsuba approach as keygen).",
+       desc:"Implementation: binary polynomial multiply h·r₂ mod (Xⁿ−1), then XOR with r₁. Since r₂ is sparse (ωr=77 set bits), can use sparse-times-dense: for each set bit position i in r₂, XOR h cyclically shifted by i into accumulator. Cost: ωr × n/64 word XORs ≈ 77×277 ≈ 21K operations. Alternative: Toom-Cook on packed words. Result u is n bits (277 words). Security: u = r₁ + h·r₂ mirrors the keygen structure s = x + h·y, creating a second QCSD instance with independent secrets (r₁, r₂). The receiver computes u·y to extract the shared algebraic structure h·r₂·y. An eavesdropper who sees (h, s, u) faces two interleaved QCSD instances and cannot separate the components without solving syndrome decoding. The r₁ masking term is essential — without it, u = h·r₂ would allow recovery of r₂ via syndrome decoding on a single quasi-cyclic equation.",
        color:"#f87171",type:"compute",
        algRef:"PKE.Encrypt line 4",
        pseudo:[
@@ -309,7 +311,7 @@ const PHASES = [
        ]},
       {name:"Compute Ciphertext v",
        math:"v = Encode(m) + s·r₂ + e   (in R)",
-       desc:"The core encryption step: the encoded message c = Encode(m) is masked by s·r₂ (another QC polynomial multiplication using the public syndrome) and further obscured by error vector e. During decryption, v − u·y strips away the masking to reveal Encode(m) + noise. The noise terms (from the sparse secret/ephemeral interactions) remain within the RMRS code's correction capacity.",
+       desc:"Implementation: second polynomial multiply s·r₂ mod (Xⁿ−1) (same sparse-times-dense optimization). XOR three n-bit vectors: Encode(m), s·r₂, and e. The ciphertext stores Truncate(v, n₁n₂) = first 17664 bits of v (discard 5 padding bits). During decryption, v − u·y reveals Encode(m) + (x·r₂ + e − r₁·y), where the noise terms are sparse enough for RMRS decoding. Security: v is where the message is actually hidden. The masking term s·r₂ = (x + h·y)·r₂ contains the shared algebraic structure h·y·r₂ that will cancel during decryption when the receiver computes u·y = (r₁ + h·r₂)·y. This double-masking (by s·r₂ and e) is necessary — s·r₂ alone would be removable by anyone who can solve the QCSD problem on the public key, but the independent error e provides an additional layer that forces a code-decoding problem even after the algebraic structure is resolved. Truncation to n₁n₂ bits is the 'parity and truncation' element of 3-DQCSD-PT that complicates certain algebraic attacks on the ring structure.",
        color:"#f87171",type:"compute",
        algRef:"PKE.Encrypt line 5",
        pseudo:[
@@ -318,7 +320,7 @@ const PHASES = [
        ]},
       {name:"Output Ciphertext & Key",
        math:"cKEM = (u, v, salt)   K = SHA3-256(0x05 ‖ K)",
-       desc:"Ciphertext: concatenation of u (n bits), Truncate(v, n₁n₂) (n₁n₂ bits), and salt (16 bytes). For HQC-128: ciphertext is ~4497 bytes total. Shared secret K is finalized via SHA3-256 with domain separator 0x05 applied to the raw K from the earlier SHA3-512 derivation. K is the 32-byte symmetric key for subsequent AEAD use.",
+       desc:"Implementation: cKEM = u (⌈n/8⌉ bytes) ‖ Truncate(v, n₁n₂) (⌈n₁n₂/8⌉ bytes) ‖ salt (16 bytes). For HQC-128: ⌈17669/8⌉ + ⌈17664/8⌉ + 16 = 2209 + 2208 + 16 = 4433 bytes (+64 for metadata = 4497). Shared secret: K = SHA3-256(0x05 ‖ K) where K is the first 32 bytes from the earlier SHA3-512 derivation. Domain separator 0x05 distinguishes the final key hash. Zeroize m, θ, r₁, r₂, e after use. Security: the ciphertext is substantially larger than ML-KEM's (4497 vs 1088 bytes for equivalent 128-bit security) — this is the fundamental trade-off of code-based cryptography: security rests on a different hard problem (syndrome decoding vs lattice problems), providing algorithm diversity against future cryptanalytic breakthroughs, at the cost of larger wire format. The SHA3-256 final hash with domain separator 0x05 ensures the shared secret is uniformly distributed even if the raw K from SHA3-512 has minor structural properties from the public-key binding.",
        color:"#f59e0b",type:"output",
        algRef:"KEM.Encaps lines 4-6",
        pseudo:[
@@ -341,12 +343,12 @@ const PHASES = [
       {from:4,to:5,label:"pass/fail",type:"seq"},
     ],
     loops:[
-      {from:4,to:0,label:"FO: re-encrypt m'→c', compare c'≟c",color:"#e879f9",desc:"Salted Fujisaki-Okamoto (SFO⊥ₘ) implicit rejection: re-derive (K', θ') ← SHA3-512(0x04 ‖ m' ‖ ekKEM ‖ salt), then deterministically re-run HQC-PKE.Encrypt(ekKEM, m', θ'). All noise re-derived from θ'. If c'≠c, ciphertext was malformed. Output pseudorandom K=SHA3-256(0x05 ‖ SHA3-256(0x06 ‖ σ ‖ cKEM)) using rejection seed σ. Converts IND-CPA to IND-CCA2."},
+      {from:4,to:0,label:"FO: re-encrypt m'→c', compare c'≟c",color:"#e879f9",desc:"Salted Fujisaki-Okamoto (SFO⊥ₘ) implicit rejection: re-derive (K', θ') ← SHA3-512(0x04 ‖ m' ‖ ekKEM ‖ salt), then deterministically re-run HQC-PKE.Encrypt(ekKEM, m', θ'). All noise re-derived from θ'. If c'≠c, ciphertext was malformed — output pseudorandom K=SHA3-256(0x05 ‖ SHA3-256(0x06 ‖ σ ‖ cKEM)) using rejection seed σ. Converts IND-CPA to IND-CCA2. The salt inclusion in re-derivation is what makes this 'salted' FO, defending against multi-target attacks where an adversary correlates ciphertexts across many public keys."},
     ],
     layers:[
       {name:"Receive Ciphertext",
        math:"cKEM = (u, v, salt)",
-       desc:"Parse the ciphertext into its components. u ∈ F₂ⁿ carries the quasi-cyclic masked ephemeral (r₁ + h·r₂). v ∈ F₂^(n₁n₂) carries the encoded-then-masked message. salt is the 16-byte value from encapsulation. Also parse decapsulation key: extract ekKEM, y (secret vector), σ (rejection seed), and seedKEM.",
+       desc:"Implementation: parse cKEM at fixed offsets — u = cKEM[0 : ⌈n/8⌉], v = cKEM[⌈n/8⌉ : ⌈n/8⌉+⌈n₁n₂/8⌉], salt = last 16 bytes. Parse dkKEM: extract ekKEM (for FO re-encryption), y (sparse secret, 277 words for HQC-128), σ (32-byte rejection seed), seedKEM. Regenerate h from seedPKE.ek if using compressed key format. Security: input validation is critical — implementations must verify ciphertext length before parsing. Malformed ciphertexts with incorrect lengths could cause buffer over-reads that leak adjacent memory (including secret key material). The parsing step itself must be constant-time: no early returns on length checks that could reveal information about the decapsulation key layout. Unlike ML-KEM where coefficients have range constraints (mod q), HQC's binary vectors have no per-element validation — any bit pattern is a valid element of F₂ⁿ.",
        color:"#94a3b8",type:"input",
        algRef:"KEM.Decaps line 1",
        pseudo:[
@@ -358,7 +360,7 @@ const PHASES = [
        ]},
       {name:"QC Multiplication u·y",
        math:"u·y  in  R = F₂[X]/(Xⁿ−1)",
-       desc:"Core decryption polynomial multiplication: compute u·y where u = r₁ + h·r₂ (from ciphertext) and y is the stored secret vector. Expanding: u·y = r₁·y + h·r₂·y. The term h·r₂·y matches the structure in v's masking (since s·r₂ = (x + h·y)·r₂ = x·r₂ + h·y·r₂). This shared term will cancel in the next step.",
+       desc:"Implementation: binary polynomial multiply u (dense, 277 words) by y (sparse, ω=66 set bits). Sparse-times-dense: for each of 66 set bit positions i in y, XOR u cyclically shifted by i into accumulator. Cost: 66 × 277 ≈ 18K word XORs. Alternative: full Toom-Cook if y is stored packed. Expanding algebraically: u·y = (r₁+h·r₂)·y = r₁·y + h·r₂·y. The h·r₂·y term cancels against s·r₂·... in the next step. Security: this is the most sensitive computation in HQC decapsulation — it multiplies the long-term secret y with attacker-controlled data u. The sparse-times-dense approach processes each set bit position of y sequentially, making it vulnerable to cache-timing and power analysis attacks that can observe which shift amounts are used (revealing y's support). Countermeasures include: constant-time loops over all n positions with conditional XOR (masked by whether position i is in y's support), or blinding y by adding a random mask before multiplication and correcting afterward.",
        color:"#f87171",type:"compute",
        algRef:"PKE.Decrypt (implicit)",
        pseudo:[
@@ -367,7 +369,7 @@ const PHASES = [
        ]},
       {name:"Subtract & Isolate",
        math:"v − u·y = Encode(m) + x·r₂ + e − r₁·y",
-       desc:"KEY CANCELLATION: v = Encode(m) + s·r₂ + e = Encode(m) + (x+h·y)·r₂ + e. Subtracting u·y = (r₁+h·r₂)·y gives: v − u·y = Encode(m) + x·r₂ + e − r₁·y. The h·y·r₂ terms cancel exactly (all arithmetic in F₂). The residual noise x·r₂ + e − r₁·y has bounded Hamming weight since x, y, r₁, r₂, e are all sparse (fixed weight). This noise must be correctable by the RMRS code.",
+       desc:"Implementation: XOR v with u·y (277 words). Algebraically: v = Encode(m) + (x+h·y)·r₂ + e, and u·y = (r₁+h·r₂)·y. The h·y·r₂ terms appear in both and cancel over F₂ (XOR is self-inverse). Residual: Encode(m) + x·r₂ + e − r₁·y. The noise wt(x·r₂) + wt(e) + wt(r₁·y) is bounded: expected weight of each sparse-times-sparse product ≈ ω·ωr·(n−1)/(2n) ≈ 2539 for HQC-128, plus ωe=77 direct error bits. Must be within RMRS correction capacity. Security: this is the mathematical heart of HQC — the h·y·r₂ cancellation is the code-based analogue of the sᵀAᵀy cancellation in ML-KEM. It works because both s and u contain h-dependent terms that share the factor r₂·y. The cancellation is exact (over F₂, addition is XOR and is its own inverse — no rounding errors unlike lattice schemes). The residual noise x·r₂ + e − r₁·y consists entirely of products of sparse vectors, so its weight is probabilistically bounded. An adversary who does not know y cannot compute u·y and therefore cannot isolate the encoded message.",
        color:"#f87171",type:"compute",
        algRef:"PKE.Decrypt line 1",
        pseudo:[
@@ -377,7 +379,7 @@ const PHASES = [
        ]},
       {name:"RMRS Decode",
        math:"m' = C.Decode(v − u·y)",
-       desc:"The concatenated Reed-Muller/Reed-Solomon decoder strips the noise. First, each n₂-bit block is decoded by the duplicated RM(1,7) decoder (majority-logic decoding per bit, repeated with multiplicity). Then the outer RS decoder over GF(2⁸) corrects remaining symbol errors using Berlekamp's algorithm (syndromes → error-locator polynomial → Chien search). For HQC-128: the RMRS code corrects errors up to its designed distance, ensuring decryption failure rate (DFR) < 2⁻¹²⁸.",
+       desc:"Implementation: (1) Split w into n₁=46 blocks of n₂=384 bits. (2) For each block, RM(1,7) majority-logic decode: compute Walsh-Hadamard transform on the 128-bit subblocks (×3 multiplicity), majority vote across replicas per bit → 8-bit GF(2⁸) symbol. (3) RS decode the 46-symbol sequence: compute 2δ−2 = 30 syndromes over GF(2⁸), run Berlekamp-Massey to find error-locator polynomial, Chien search for error positions, Forney for error values. Output k₁=16 recovered symbols = 128 bits = m'. DFR < 2⁻¹²⁸ for HQC-128. Security: the decoder must be constant-time — variable-time decoding (e.g., early exit when syndromes are zero, or data-dependent Berlekamp-Massey iterations) leaks information about the noise pattern, which correlates with the secret key y. Specifically, Guo-Johansson-Stebila (GJS) showed that an adversary who can observe decoding time or success/failure can mount a reaction attack: by crafting ciphertexts that produce noise patterns near the correction boundary, the adversary learns which positions of y are set, recovering y in ~2²⁰ queries. The FO transform's implicit rejection is the primary defense, but constant-time decoding eliminates the timing oracle entirely.",
        color:"#a78bfa",type:"decode",
        algRef:"PKE.Decrypt line 1 (Decode)",
        pseudo:[
@@ -389,7 +391,7 @@ const PHASES = [
        ]},
       {name:"FO Re-derive & Re-encrypt",
        math:"(K', θ') ← G(m' ‖ ekKEM ‖ salt);  c' ← Encrypt(ekKEM, m', θ')",
-       desc:"SALTED FUJISAKI-OKAMOTO TRANSFORM: deterministically re-derive the noise coin θ' from recovered m' using the same SHA3-512 derivation as encapsulation. Then fully re-encrypt: sample r₁', r₂', e' from θ', compute u' = r₁' + h·r₂' and v' = Encode(m') + s·r₂' + e'. All noise vectors are identical to the encapsulator's if m' = m. The re-encryption is the most expensive step of decapsulation (two polynomial multiplications).",
+       desc:"Implementation: recompute (K', θ') = SHA3-512(0x04 ‖ m' ‖ ekKEM ‖ salt). Re-run full HQC-PKE.Encrypt: re-sample r₁', r₂', e' from θ' via SHAKE-256, compute u' = r₁' + h·r₂' and v' = Encode(m') + s·r₂' + e'. Two polynomial multiplications required (h·r₂' and s·r₂'). Constant-time byte comparison of (u', Truncate(v', n₁n₂)) vs (u, v). On mismatch: K' = SHA3-256(0x06 ‖ σ ‖ cKEM). Both paths must execute in identical time. Security: this is the SFO⊥ₘ (salted FO with implicit rejection) transform — HQC's version includes the salt in the re-derivation, which ML-KEM does not need because ML-KEM has no multi-target vulnerability at its parameter sizes. The re-encryption is the most expensive step (two polynomial multiplications), but it is essential for CCA2 security. Without it, HQC-PKE is only IND-CPA secure, meaning an adversary who can submit chosen ciphertexts for decapsulation can recover the secret key via the GJS reaction attack. The implicit rejection using σ prevents the adversary from learning whether decapsulation succeeded — the output K looks random regardless.",
        color:"#e879f9",type:"verify",
        algRef:"KEM.Decaps lines 4-6",
        pseudo:[
@@ -400,7 +402,7 @@ const PHASES = [
        ]},
       {name:"Shared Secret Output",
        math:"K = SHA3-256(0x05 ‖ K')  (match or rejection path)",
-       desc:"Match path: K = SHA3-256(0x05 ‖ K'), identical to the encapsulator's output. Rejection path: K' = SHA3-256(0x06 ‖ σ ‖ cKEM) using the secret rejection seed σ and the full ciphertext, then K = SHA3-256(0x05 ‖ K'). The adversary cannot distinguish which path was taken — σ is never revealed and the hash output is pseudorandom in both cases. This provides IND-CCA2 security via the HHK/SFO transform.",
+       desc:"Implementation: conditional assignment K' = ct_select(G_output, rejection_hash, match_flag) using constant-time bitwise masking. Then K = SHA3-256(0x05 ‖ K'). Match: K' comes from SHA3-512(0x04 ‖ m' ‖ ekKEM ‖ salt)[0:32], identical to encapsulator. Reject: K' = SHA3-256(0x06 ‖ σ ‖ cKEM), pseudorandom from the secret σ. Output K (32 bytes). Zeroize m', K', θ', σ, y, and all re-encryption intermediates. Security: HQC uses a double-hash structure (inner K' then outer SHA3-256(0x05 ‖ K')) whereas ML-KEM uses a single hash. The outer hash with domain separator 0x05 ensures that even if the adversary can distinguish the inner K' values (which should be infeasible), the final shared secret K is uniformly distributed. The σ-based rejection path produces K that is deterministic in cKEM (same malformed ciphertext → same rejection K), preventing the adversary from using randomness in the rejection output as a distinguishing oracle. The complete scheme achieves IND-CCA2 security under the DQCSD-PT assumption in the QROM (quantum random oracle model).",
        color:"#34d399",type:"output",
        algRef:"KEM.Decaps lines 8-9",
        pseudo:[
@@ -418,31 +420,31 @@ const PHASES = [
 // ═══════════════════════════════════════════════════════════════
 const SUMMARIES = {
   keygen: [
-    "Draw a random seed and split it into a key-generation seed and a rejection seed via SHA3-512",
-    "Expand the public seed into a uniformly random binary polynomial h (≈17k bits)",
-    "Sample a sparse secret vector y with exactly ω set bits (Hamming-weight constrained)",
-    "Sample a second sparse secret vector x with exactly ω set bits for masking",
-    "Binary polynomial multiplication h·y in the quotient ring F₂[X]/(Xⁿ−1)",
-    "XOR x with h·y to form the public syndrome s — this is the QCSD hard instance",
-    "Bundle public key (h, s) and private key (y, σ, seedKEM) for output",
+    "SHA3-512(0x00 ‖ seedKEM) → split into PKE seed and rejection seed σ",
+    "Expand seed into a uniformly random binary polynomial h ∈ F₂[X]/(Xⁿ−1)",
+    "Sample sparse secret vector y with exactly ω nonzero bits via rejection sampling",
+    "Sample second sparse secret vector x with exactly ω nonzero bits (independent of y)",
+    "Binary polynomial multiply h·y mod (Xⁿ−1) — circulant matrix-vector product",
+    "XOR: s = x ⊕ h·y — form the public syndrome (QCSD hard problem instance)",
+    "Output public key (h, s) and private key (y, σ, seedKEM)",
   ],
   encaps: [
-    "Draw a random k-bit ephemeral message m and a 16-byte salt from the RBG",
-    "Hash m with the public key and salt to get a raw shared secret K and noise coin θ",
-    "Sample two sparse ephemeral vectors r₁, r₂ with weight ωr from the noise coin",
-    "Sample a sparse error vector e with weight ωe to obscure the encoded message",
-    "Encode message m using concatenated Reed-Muller + Reed-Solomon error-correcting code",
-    "Compute first ciphertext component: u = r₁ + h·r₂ (polynomial multiply + XOR)",
-    "Compute second component: v = Encode(m) + s·r₂ + e (encode + mask + error)",
-    "Package ciphertext (u, v, salt) and derive 32-byte shared secret K via SHA3-256",
+    "Draw random k-bit message m and 16-byte salt from the RBG",
+    "SHA3-512(0x04 ‖ m ‖ ek ‖ salt) → raw shared secret K + noise coin θ",
+    "Sample two sparse ephemeral vectors r₁, r₂ with fixed weight ωr from θ",
+    "Sample sparse error vector e with fixed weight ωe from θ",
+    "Encode m via concatenated Reed-Solomon ∘ Reed-Muller error-correcting code",
+    "u = r₁ ⊕ h·r₂ — polynomial multiply + XOR (first ciphertext component)",
+    "v = Encode(m) ⊕ s·r₂ ⊕ e — encoded message masked by syndrome product + error",
+    "Output ciphertext (u, v, salt) and K = SHA3-256(0x05 ‖ K)",
   ],
   decaps: [
-    "Receive and parse the ciphertext (u, v, salt) and extract secret key components",
-    "Multiply ciphertext u by secret vector y — the core decryption polynomial multiply",
-    "Subtract u·y from v to cancel shared terms, isolating encoded message + small noise",
-    "Decode via Reed-Muller (majority logic) then Reed-Solomon (Berlekamp) to recover m'",
-    "Re-derive noise from m', fully re-encrypt, and compare ciphertexts (FO transform)",
-    "Output shared secret: real key if match, pseudorandom decoy if tampered (IND-CCA2)",
+    "Parse ciphertext (u, v, salt) and extract secret key components (y, σ)",
+    "Polynomial multiply u·y mod (Xⁿ−1) — core decryption computation",
+    "v ⊕ u·y cancels h·y·r₂ terms, isolating Encode(m) + sparse noise",
+    "RM(1,7) majority-logic decode → RS Berlekamp decode → recover m′",
+    "Re-derive θ′ from m′, fully re-encrypt, compare c′ ≟ c (SFO⊥ₘ check)",
+    "Output K = SHA3-256(0x05 ‖ K′) — real or rejection path (IND-CCA2)",
   ],
 };
 
@@ -515,8 +517,8 @@ function renderFlowchart() {
   layers.forEach((l, i) => {
     svg += `<linearGradient id="lg${i}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="${l.color}" stop-opacity="${selectedIdx===i?'0.2':'0.12'}"/><stop offset="100%" stop-color="${l.color}" stop-opacity="0.03"/></linearGradient>`;
   });
-  svg += `<marker id="am" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 1L7 4L0 7Z" fill="#8899aa"/></marker>`;
-  svg += `<marker id="amc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 1L7 4L0 7Z" fill="#e879f9"/></marker>`;
+  svg += `<marker id="am" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 1L7 4L0 7Z" fill="#b0bec5"/></marker>`;
+  svg += `<marker id="amc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 1L7 4L0 7Z" fill="#e879f9"/></marker>`;
   svg += `</defs>`;
 
   // Sequential flows
@@ -525,8 +527,8 @@ function renderFlowchart() {
     const y2 = getY(f.to) - 1;
     const mx = nodeX + nodeW/2;
     const fc = layers[f.from].color;
-    svg += `<line x1="${mx}" y1="${y1}" x2="${mx}" y2="${y2}" stroke="${fc}" stroke-width="1.8" stroke-opacity="0.55" marker-end="url(#am)"/>`;
-    svg += `<text x="${mx+10}" y="${(y1+y2)/2+3}" font-size="8" font-family="'Courier New',monospace" fill="${fc}" fill-opacity="0.7">${f.label}</text>`;
+    svg += `<line x1="${mx}" y1="${y1}" x2="${mx}" y2="${y2}" stroke="${fc}" stroke-width="2" stroke-opacity="0.8" marker-end="url(#am)"/>`;
+    svg += `<text x="${mx+10}" y="${(y1+y2)/2+3}" font-size="8" font-family="'Courier New',monospace" fill="${fc}" fill-opacity="0.9">${f.label}</text>`;
   });
 
   // Non-sequential / data flows
@@ -540,8 +542,8 @@ function renderFlowchart() {
     const bulge = isLeft ? nodeX - 20 - gap*4 : nodeX + nodeW + 20 + gap*4;
     const fc = layers[f.from].color;
     const midY = (fromY + toY) / 2;
-    svg += `<path d="M${side} ${fromY} C${bulge} ${fromY},${bulge} ${toY},${side} ${toY}" fill="none" stroke="${fc}" stroke-width="1.3" stroke-opacity="0.5" stroke-dasharray="4,2" marker-end="url(#am)"/>`;
-    svg += `<text x="${bulge+(isLeft?-3:3)}" y="${midY+3}" font-size="7" font-family="'Courier New',monospace" fill="${fc}" fill-opacity="0.75" text-anchor="${isLeft?'end':'start'}">${f.label}</text>`;
+    svg += `<path d="M${side} ${fromY} C${bulge} ${fromY},${bulge} ${toY},${side} ${toY}" fill="none" stroke="${fc}" stroke-width="1.8" stroke-opacity="0.85" stroke-dasharray="5,2" marker-end="url(#am)"/>`;
+    svg += `<text x="${bulge+(isLeft?-3:3)}" y="${midY+3}" font-size="8" font-family="'Courier New',monospace" fill="${fc}" fill-opacity="1" text-anchor="${isLeft?'end':'start'}">${f.label}</text>`;
     dataFlowIdx++;
   });
 
@@ -550,8 +552,8 @@ function renderFlowchart() {
     const fromY = getCY(loop.from);
     const toY = getCY(loop.to);
     const rx = nodeX + nodeW + 40;
-    svg += `<path d="M${nodeX+nodeW+4} ${fromY} C${rx+12} ${fromY},${rx+12} ${toY},${nodeX+nodeW+4} ${toY}" fill="none" stroke="${loop.color}" stroke-width="1.8" stroke-opacity="0.65" stroke-dasharray="5,3" marker-end="url(#amc)"/>`;
-    svg += `<text x="${rx+6}" y="${(fromY+toY)/2}" font-size="7" font-family="'Courier New',monospace" fill="${loop.color}" fill-opacity="0.85" text-anchor="start" writing-mode="tb">↺ FO loop</text>`;
+    svg += `<path d="M${nodeX+nodeW+4} ${fromY} C${rx+12} ${fromY},${rx+12} ${toY},${nodeX+nodeW+4} ${toY}" fill="none" stroke="${loop.color}" stroke-width="2.2" stroke-opacity="0.9" stroke-dasharray="5,3" marker-end="url(#amc)"/>`;
+    svg += `<text x="${rx+6}" y="${(fromY+toY)/2}" font-size="8" font-family="'Courier New',monospace" fill="${loop.color}" fill-opacity="1" text-anchor="start" writing-mode="tb">↺ FO loop</text>`;
   });
 
   // Nodes
@@ -624,9 +626,6 @@ function renderDetail() {
   let html = `<div class="det-header"><div class="det-dot" style="background:${layer.color}"></div><span class="det-name" style="color:${layer.color}">${layer.name}</span>`;
   if (layer.algRef) html += `<span class="det-alg">${layer.algRef}</span>`;
   html += `<span class="det-type">${layer.type}</span></div>`;
-  if (layer.summary) {
-    html += `<div style="font-size:10px;color:#8896a6;font-style:italic;margin-bottom:5px;line-height:1.5">▸ ${layer.summary}</div>`;
-  }
   html += `<div class="det-math" style="border-color:${layer.color}20">${escHtml(layer.math)}</div>`;
   html += `<div class="det-desc">${layer.desc}</div>`;
 
@@ -667,7 +666,7 @@ let camAngleTarget = { theta: 0.45, phi: 0.55 };
 let camTargetY = 0;
 let isDrag = false, dragStart = { x:0, y:0 };
 let camDist = 9;
-const SPACING = 1.8, SLAB_W = 6.4, SLAB_H = 0.09, SLAB_D = 3.0;
+const SPACING = 2.6, SLAB_W = 6.8, SLAB_H = 0.09, SLAB_D = 3.0;
 
 function makeCanvasTex(drawFn, w, h) {
   const S = 2, c = document.createElement('canvas');
@@ -682,6 +681,7 @@ function makeCanvasTex(drawFn, w, h) {
   return t;
 }
 
+// Returns final y after last line drawn
 function wrapTextCanvas(ctx, text, x, y, maxW, lh, maxLines) {
   const words = text.split(' ');
   let line = '', ly = y, n = 0;
@@ -690,17 +690,77 @@ function wrapTextCanvas(ctx, text, x, y, maxW, lh, maxLines) {
     if (ctx.measureText(test).width > maxW && line) {
       ctx.fillText(line, x, ly);
       line = w; ly += lh; n++;
-      if (maxLines && n >= maxLines) { ctx.fillText(line+'…', x, ly); return; }
+      if (maxLines && n >= maxLines) { ctx.fillText(line+'…', x, ly); return ly + lh; }
     } else line = test;
   }
-  if (line) ctx.fillText(line, x, ly);
+  if (line) { ctx.fillText(line, x, ly); ly += lh; }
+  return ly;
+}
+
+// Count how many wrapped lines text would need at current ctx.font
+function countWrapLines(ctx, text, maxW) {
+  const words = text.split(' ');
+  let line = '', n = 1;
+  for (const w of words) {
+    const test = line + (line?' ':'')+w;
+    if (ctx.measureText(test).width > maxW && line) { line = w; n++; }
+    else line = test;
+  }
+  return n;
+}
+
+// Auto-shrink font from startSz down to minSz until text fits availH, then draw
+function fitTextCanvas(ctx, text, x, y, maxW, availH, color, startSz) {
+  let sz = startSz || 10;
+  const minSz = 7;
+  let lh, nLines;
+  while (sz >= minSz) {
+    ctx.font = sz + 'px sans-serif';
+    lh = Math.round(sz * 1.25);
+    nLines = countWrapLines(ctx, text, maxW);
+    if (nLines * lh <= availH) break;
+    sz -= 0.5;
+  }
+  ctx.font = sz + 'px sans-serif';
+  ctx.fillStyle = color;
+  const maxL = Math.floor(availH / lh);
+  return wrapTextCanvas(ctx, text, x, y, maxW, lh, maxL);
 }
 
 function layerTex(layer, isSel) {
   const hasPseudo = isSel && layer.pseudo && layer.pseudo.length > 0;
   const hasSummary = !!layer.summary;
-  const texH = hasPseudo ? 280 : (hasSummary ? 160 : 120);
-  return makeCanvasTex((ctx, W, H) => {
+  const CW = 740, mW = CW - 28, pad = 14;
+
+  // ── Pre-measure to determine canvas height ──
+  let texH;
+  if (!isSel) {
+    texH = hasSummary ? 140 : 100;
+  } else {
+    const mc = document.createElement('canvas');
+    mc.width = CW; const mx = mc.getContext('2d');
+    let h = 28;
+    if (hasPseudo) {
+      h += 12;
+      h += Math.min(layer.pseudo.length, 6) * 13;
+      if (layer.pseudo.length > 6) h += 10;
+      h += 10;
+    }
+    if (hasSummary) {
+      mx.font = 'italic 10px sans-serif';
+      h += countWrapLines(mx, '▸ ' + layer.summary, mW) * 12 + 2;
+    }
+    mx.font = '12px monospace';
+    h += countWrapLines(mx, layer.math, mW) * 14 + 4;
+    mx.font = '10px sans-serif';
+    const descLines = countWrapLines(mx, layer.desc, mW);
+    let descLh = 12;
+    h += descLines * descLh;
+    if (h > 500) { descLh = 10; h = h - descLines*12 + descLines*10; }
+    texH = Math.min(Math.max(h + 10, 160), 500);
+  }
+
+  const tex = makeCanvasTex((ctx, W, H) => {
     ctx.fillStyle = isSel ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.4)';
     ctx.beginPath(); ctx.roundRect(0,0,W,H,5); ctx.fill();
     ctx.fillStyle = layer.color;
@@ -715,64 +775,73 @@ function layerTex(layer, isSel) {
     ctx.textAlign = 'left';
     ctx.font = 'bold 14px sans-serif';
     ctx.fillStyle = layer.color;
-    ctx.fillText(layer.name, 14, 18);
+    ctx.fillText(layer.name, pad, 18);
 
-    let yOff = 0;
+    let cur = 28;
+
+    // ══ PSEUDOCODE AT TOP (selected only) ══
+    if (hasPseudo) {
+      ctx.font = 'bold 8px monospace';
+      ctx.fillStyle = layer.color + '80';
+      ctx.fillText('PSEUDOCODE · HQC ' + (layer.algRef || ''), pad, cur);
+      cur += 12;
+      ctx.font = '10px monospace';
+      const maxPcLines = 6;
+      const pcSlice = layer.pseudo.slice(0, maxPcLines);
+      pcSlice.forEach(p => {
+        const lnStr = (p.ln !== '' && p.ln !== undefined) ? String(p.ln).padStart(2,' ') : '  ';
+        ctx.fillStyle = '#334155';
+        ctx.fillText(lnStr, pad, cur);
+        if (p.hl) {
+          const tw = ctx.measureText(p.code).width;
+          ctx.fillStyle = layer.color + '12';
+          ctx.fillRect(36, cur - 9, tw + 6, 13);
+          ctx.fillStyle = '#e2e8f0';
+          ctx.fillText(p.code, 38, cur);
+        } else {
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillText(p.code, 38, cur);
+        }
+        if (p.cm) {
+          const cw = ctx.measureText(p.code).width;
+          ctx.fillStyle = '#334155'; ctx.font = 'italic 9px monospace';
+          ctx.fillText(p.cm, 42 + cw, cur);
+          ctx.font = '10px monospace';
+        }
+        cur += 13;
+      });
+      if (layer.pseudo.length > maxPcLines) {
+        ctx.fillStyle = '#334155'; ctx.font = 'italic 9px monospace';
+        ctx.fillText('… +' + (layer.pseudo.length - maxPcLines) + ' more', 38, cur);
+        cur += 10;
+      }
+      cur += 3;
+      ctx.strokeStyle = layer.color + '30'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad, cur); ctx.lineTo(W-pad, cur); ctx.stroke();
+      cur += 7;
+    }
+
+    // ══ SUMMARY ══
     if (hasSummary) {
       ctx.font = 'italic 10px sans-serif';
       ctx.fillStyle = isSel ? '#b0bec5' : '#6b7a8d';
-      wrapTextCanvas(ctx, '▸ ' + layer.summary, 14, 32, W-28, 12, 3);
-      yOff = 26;
+      cur = wrapTextCanvas(ctx, '▸ ' + layer.summary, pad, cur, mW, 12, 3);
+      cur += 2;
     }
 
-    ctx.font = '13px monospace';
+    // ══ MATH FORMULA ══
+    ctx.font = '12px monospace';
     ctx.fillStyle = isSel ? '#ffffff' : '#cbd5e1';
-    wrapTextCanvas(ctx, layer.math, 14, 40 + yOff, W-28, 15, 3);
-    if (isSel) { ctx.font = '10px sans-serif'; ctx.fillStyle = '#8899aa'; wrapTextCanvas(ctx, layer.desc, 14, 72 + yOff, W-28, 12, 4); }
+    cur = wrapTextCanvas(ctx, layer.math, pad, cur, mW, 14, 2);
+    cur += 4;
 
-    if (hasPseudo) {
-      const pcY0 = 126 + yOff;
-      ctx.strokeStyle = layer.color + '30';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(14, pcY0); ctx.lineTo(W-14, pcY0); ctx.stroke();
-      ctx.font = 'bold 8px monospace';
-      ctx.fillStyle = layer.color + '80';
-      ctx.fillText('PSEUDOCODE · HQC ' + (layer.algRef || ''), 14, pcY0 + 10);
-      ctx.font = '10px monospace';
-      let ly = pcY0 + 24;
-      const maxPcLines = 8;
-      const pcLines = layer.pseudo.slice(0, maxPcLines);
-      pcLines.forEach(p => {
-        const lnStr = (p.ln !== '' && p.ln !== undefined) ? String(p.ln).padStart(2,' ') : '  ';
-        ctx.fillStyle = '#334155';
-        ctx.fillText(lnStr, 14, ly);
-        if (p.hl) {
-          const codeText = p.code;
-          const textW = ctx.measureText(codeText).width;
-          ctx.fillStyle = layer.color + '12';
-          ctx.fillRect(36, ly - 9, textW + 6, 13);
-          ctx.fillStyle = '#e2e8f0';
-          ctx.fillText(codeText, 38, ly);
-        } else {
-          ctx.fillStyle = '#94a3b8';
-          ctx.fillText(p.code, 38, ly);
-        }
-        if (p.cm) {
-          const codeW = ctx.measureText(p.code).width;
-          ctx.fillStyle = '#334155';
-          ctx.font = 'italic 9px monospace';
-          ctx.fillText(p.cm, 42 + codeW, ly);
-          ctx.font = '10px monospace';
-        }
-        ly += 14;
-      });
-      if (layer.pseudo.length > maxPcLines) {
-        ctx.fillStyle = '#334155';
-        ctx.font = 'italic 9px monospace';
-        ctx.fillText('... +' + (layer.pseudo.length - maxPcLines) + ' more lines', 38, ly);
-      }
+    // ══ DESCRIPTION — auto-scaled to fill remaining canvas ══
+    if (isSel) {
+      const avail = H - cur - 6;
+      if (avail > 12) fitTextCanvas(ctx, layer.desc, pad, cur, mW, avail, '#8899aa', 10);
     }
-  }, 640, texH);
+  }, CW, texH);
+  return { tex, texH };
 }
 
 function flowLabel3D(text, color) {
@@ -803,15 +872,16 @@ function build3D() {
 
     const hasPseudo = isSel && layer.pseudo && layer.pseudo.length > 0;
     const hasSummary = !!layer.summary;
-    const slabD = hasPseudo ? SLAB_D * 2.4 : (hasSummary ? SLAB_D * 1.5 : SLAB_D);
+
+    const { tex, texH } = layerTex(layer, isSel);
+    const slabD = isSel ? SLAB_D * (texH / 140) : (hasSummary ? SLAB_D * 1.2 : SLAB_D);
 
     const geo = new THREE.BoxGeometry(SLAB_W, isSel?SLAB_H*2.2:SLAB_H, slabD);
     const mat = new THREE.MeshPhongMaterial({ color: c.clone().multiplyScalar(isSel?0.4:0.18), transparent:true, opacity:isSel?0.88:0.5, specular:c.clone().multiplyScalar(0.3), shininess:50 });
     g.add(new THREE.Mesh(geo, mat));
     g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:c, transparent:true, opacity:isSel?0.8:0.25 })));
 
-    const tex = layerTex(layer, isSel);
-    const panelD = hasPseudo ? slabD * 0.92 : slabD * 0.88;
+    const panelD = slabD * 0.92;
     const panel = new THREE.Mesh(new THREE.PlaneGeometry(SLAB_W*0.94, panelD), new THREE.MeshBasicMaterial({ map:tex, transparent:true, opacity:isSel?1:0.85, side:THREE.DoubleSide, depthWrite:false }));
     panel.position.y = (isSel?SLAB_H*1.1:SLAB_H/2)+0.004;
     panel.rotation.x = -Math.PI/2;
