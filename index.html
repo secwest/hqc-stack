@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HQC — Cryptographic Operation Layer Stack</title>
+<meta name="description" content="Interactive 3D visualization of HQC post-quantum key encapsulation mechanism mathematical operations with pseudocode">
+<style>
+  :root {
+    --bg: #080c14;
+    --bg2: #0a0e17;
+    --panel: #111827;
+    --border: #1e293b;
+    --text: #e2e8f0;
+    --textdim: #94a3b8;
+    --textmuted: #64748b;
+    --textdark: #334155;
+    --cyan: #22d3ee;
+    --cyandim: #0e7490;
+    --green: #34d399;
+    --orange: #f59e0b;
+    --red: #f87171;
+    --purple: #a78bfa;
+    --pink: #e879f9;
+    --blue: #38bdf8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', 'Helvetica Neue', system-ui, sans-serif; overflow: hidden; height: 100vh; }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* Header */
+  #header { display: flex; align-items: center; justify-content: space-between; padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0; z-index: 10; }
+  #header .title-area .sup { font-size: 9px; font-family: 'Courier New', monospace; color: var(--cyandim); letter-spacing: 2.5px; text-transform: uppercase; }
+  #header .title-area h1 { font-size: 16px; font-weight: 700; margin: 2px 0 0; }
+  #header .title-area h1 .idx { font-family: 'Courier New', monospace; }
+  #header .title-area h1 .sep { color: var(--textdark); margin: 0 10px; }
+  #header .title-area h1 .count { color: var(--textmuted); font-weight: 400; }
+  #header .controls { display: flex; align-items: center; gap: 10px; }
+  .phase-tabs { display: flex; gap: 2px; background: var(--panel); border-radius: 6px; padding: 3px; }
+  .phase-tab { padding: 6px 14px; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; font-family: 'Courier New', monospace; font-size: 11px; font-weight: 700; color: var(--textmuted); transition: all 0.2s; }
+  .phase-tab.active { background: var(--border); }
+  .phase-tab .num { opacity: 0.4; margin-right: 4px; }
+  .nav-btns { display: flex; gap: 3px; }
+  .nav-btn { width: 28px; height: 28px; background: var(--border); border: 1px solid var(--textdark); border-radius: 4px; color: var(--textdim); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+  .nav-btn:hover { background: var(--textdark); }
+  .pc-toggle { padding: 5px 10px; background: var(--border); border: 1px solid var(--textdark); border-radius: 4px; cursor: pointer; font-family: 'Courier New', monospace; font-size: 10px; font-weight: 700; color: var(--textmuted); transition: all 0.2s; }
+  .pc-toggle.active { color: var(--cyan); border-color: var(--cyandim); background: #0e749020; }
+
+  /* Main layout */
+  #main { display: flex; flex: 1; min-height: 0; }
+  #viewport { flex: 1; position: relative; cursor: grab; }
+  #viewport:active { cursor: grabbing; }
+  #viewport canvas { display: block; }
+  #viewport .hint { position: absolute; bottom: 10px; left: 14px; font-size: 9px; color: var(--textdark); font-family: 'Courier New', monospace; pointer-events: none; }
+
+  /* Sidebar */
+  #sidebar { width: 380px; border-left: 1px solid var(--border); background: var(--bg2); display: flex; flex-direction: column; flex-shrink: 0; }
+  #sidebar .section-label { padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 10px; font-family: 'Courier New', monospace; color: var(--textmuted); letter-spacing: 1px; display: flex; align-items: center; justify-content: space-between; }
+  #sidebar .section-label .sub { font-size: 8px; color: var(--textdark); }
+
+  /* SVG flowchart area */
+  #flowchart-wrap { flex: 1; overflow-y: auto; padding: 4px 0; }
+  #flowchart-wrap svg text { pointer-events: none; }
+  #flowchart-wrap .fc-node { cursor: pointer; }
+  #flowchart-wrap .fc-node:hover rect { stroke-opacity: 0.8 !important; }
+
+  /* Detail panel */
+  #detail { border-top: 1px solid var(--border); padding: 12px; flex-shrink: 0; max-height: 340px; overflow-y: auto; transition: background 0.3s; }
+  #detail .det-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  #detail .det-dot { width: 10px; height: 10px; border-radius: 2px; }
+  #detail .det-name { font-size: 12px; font-weight: 700; }
+  #detail .det-type { font-size: 9px; font-family: 'Courier New', monospace; color: var(--textmuted); margin-left: auto; background: var(--border); padding: 2px 6px; border-radius: 3px; }
+  #detail .det-alg { font-size: 8px; font-family: 'Courier New', monospace; color: var(--cyan); margin-left: 4px; opacity: 0.7; }
+  #detail .det-math { font-size: 11px; font-family: 'Courier New', monospace; color: var(--text); padding: 5px 8px; background: #0d1117; border-radius: 4px; margin-bottom: 6px; line-height: 1.7; word-break: break-word; }
+  #detail .det-desc { font-size: 10px; color: var(--textdim); line-height: 1.6; }
+  #detail .flow-links { margin-top: 8px; padding-top: 6px; }
+  #detail .flow-links .fl-label { font-size: 9px; font-family: 'Courier New', monospace; color: var(--textmuted); }
+  #detail .flow-links .fl-badge { font-size: 9px; font-family: 'Courier New', monospace; padding: 1px 5px; border-radius: 3px; margin-right: 3px; cursor: pointer; display: inline-block; margin-bottom: 2px; }
+  #detail .loop-box { margin-top: 8px; padding: 6px 8px; border-radius: 4px; }
+  #detail .loop-box .loop-title { font-size: 9px; font-weight: 700; font-family: 'Courier New', monospace; margin-bottom: 3px; }
+  #detail .loop-box .loop-desc { font-size: 9px; color: var(--textdim); line-height: 1.5; }
+
+  /* Pseudocode panel */
+  #pseudocode { border-top: 1px solid var(--border); padding: 0; flex-shrink: 0; max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+  #pseudocode.open { max-height: 260px; }
+  #pseudocode .pc-inner { padding: 8px 12px; overflow-y: auto; max-height: 250px; }
+  #pseudocode .pc-title { font-size: 9px; font-family: 'Courier New', monospace; color: var(--cyan); letter-spacing: 1px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  #pseudocode .pc-title .pc-ref { color: var(--textmuted); font-weight: 400; }
+  #pseudocode .pc-code { font-size: 10px; font-family: 'Courier New', monospace; line-height: 1.75; color: var(--textdim); white-space: pre-wrap; }
+  #pseudocode .pc-code .pc-ln { color: var(--textdark); display: inline-block; width: 22px; text-align: right; margin-right: 10px; user-select: none; }
+  #pseudocode .pc-code .pc-hl { color: var(--text); background: #ffffff08; display: inline; border-radius: 2px; padding: 0 2px; }
+  #pseudocode .pc-code .pc-kw { color: var(--purple); }
+  #pseudocode .pc-code .pc-fn { color: var(--cyan); }
+  #pseudocode .pc-code .pc-cm { color: var(--textdark); font-style: italic; }
+  #pseudocode .pc-code .pc-var { color: var(--green); }
+  #pseudocode .pc-code .pc-op { color: var(--orange); }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    #sidebar { width: 300px; }
+  }
+  @media (max-width: 700px) {
+    #main { flex-direction: column; }
+    #sidebar { width: 100%; height: 40%; border-left: none; border-top: 1px solid var(--border); }
+    #viewport { height: 60%; }
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div class="title-area">
+      <div class="sup">HQC · Hamming Quasi-Cyclic Post-Quantum Key Encapsulation</div>
+      <h1>
+        Layer <span class="idx" id="hdr-idx">01</span><span class="count" id="hdr-count"> / 7</span>
+        <span class="sep">·</span>
+        <span id="hdr-name" style="color:var(--cyan)">Seed Generation</span>
+      </h1>
+    </div>
+    <div class="controls">
+      <button class="pc-toggle" id="pc-toggle" title="Toggle pseudocode panel (p)">{ } PSEUDOCODE</button>
+      <div class="phase-tabs" id="phase-tabs"></div>
+      <div class="nav-btns">
+        <button class="nav-btn" id="btn-up" title="Previous layer (↑ or k)">↑</button>
+        <button class="nav-btn" id="btn-down" title="Next layer (↓ or j)">↓</button>
+      </div>
+    </div>
+  </div>
+  <div id="main">
+    <div id="viewport">
+      <div class="hint">↑↓ j/k navigate · drag orbit · 1/2/3 switch phase · p toggle pseudocode</div>
+    </div>
+    <div id="sidebar">
+      <div class="section-label">
+        <span>FLOWCHART · <span id="fc-count">7</span> OPS</span>
+        <span class="sub">click node to navigate</span>
+      </div>
+      <div id="flowchart-wrap"></div>
+      <div id="pseudocode"><div class="pc-inner" id="pc-inner"></div></div>
+      <div id="detail"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  HQC DATA — based on HQC specification 2025-08-22
+//  Ring: R = F₂[X]/(Xⁿ−1), n primitive prime
+//  Security: QCSD (Quasi-Cyclic Syndrome Decoding)
+//  Error correction: Concatenated Reed-Muller / Reed-Solomon
+// ═══════════════════════════════════════════════════════════════
+const PHASES = [
+  {
+    id:"keygen", label:"KEYGEN", color:"#22d3ee",
+    alg:"HQC-KEM.KeyGen + HQC-PKE.KeyGen(seedPKE)",
+    flows:[
+      {from:0,to:1,label:"seedPKE.ek",type:"data"},
+      {from:0,to:2,label:"seedPKE.dk",type:"data"},
+      {from:0,to:3,label:"seedPKE.dk",type:"data"},
+      {from:1,to:4,label:"h",type:"seq"},
+      {from:2,to:4,label:"y (wt ω)",type:"data"},
+      {from:4,to:5,label:"h·y",type:"seq"},
+      {from:3,to:5,label:"x (wt ω)",type:"data"},
+      {from:5,to:6,label:"s, h, y, σ",type:"seq"},
+    ],
+    loops:[],
+    layers:[
+      {name:"Seed Generation",
+       math:"seedKEM ←$ B³²; (seedPKE, σ) ← SHA3-512(0x00 ‖ seedKEM)",
+       desc:"A 32-byte seed seedKEM is drawn from an approved RBG. SHA3-512 with domain separator 0x00 expands it into seedPKE (drives key material generation) and σ (32-byte implicit-rejection seed stored in the decapsulation key for the HHK transform). σ is never revealed.",
+       color:"#94a3b8",type:"input",
+       algRef:"KEM.KeyGen lines 1-2",
+       pseudo:[
+         {ln:1, code:'seedKEM ←$ B³²', hl:true, cm:'// 32 bytes from RBG'},
+         {ln:2, code:'(seedPKE, σ) ← SHA3-512(0x00 ‖ seedKEM)', hl:true, cm:'// domain sep 0x00'},
+         {ln:3, code:'(ekPKE, dkPKE) ← HQC-PKE.KeyGen(seedPKE)', hl:false},
+       ]},
+      {name:"Public Vector Generation",
+       math:"h ← Sample(XOF(seedPKE.ek))",
+       desc:"SHAKE-256 as XOF expands seedPKE.ek into a uniformly random vector h ∈ R = F₂[X]/(Xⁿ−1). h defines one row of a quasi-cyclic parity-check matrix H = (Iₙ | rot(h)), forming the public random code. For HQC-128: n = 17669 (primitive prime). h is deterministic from seedPKE.ek, so it can be regenerated from the public key seed.",
+       color:"#22d3ee",type:"expand",
+       algRef:"PKE.KeyGen line 2",
+       pseudo:[
+         {ln:1, code:'(seedPKE.dk, seedPKE.ek) ← SHA3-512(0x01 ‖ seedPKE)', hl:false, cm:'// domain sep 0x01'},
+         {ln:2, code:'h ← Sample(XOF(seedPKE.ek))', hl:true, cm:'// SHAKE-256 → uniform h ∈ R'},
+       ]},
+      {name:"Secret Vector y",
+       math:"y ← SampleFixedWeightVect$(XOF(seedPKE.dk), ω)",
+       desc:"Sample a vector y ∈ R with exactly ω nonzero coordinates (Hamming weight ω) using rejection sampling from SHAKE-256 output. For HQC-128: ω = 66. The fixed-weight constraint is essential: (1) it calibrates the noise level for correct decoding, and (2) prevents statistical attacks that exploit weight variance. y is part of the secret key and used during decapsulation to compute u·y.",
+       color:"#34d399",type:"sample",
+       algRef:"PKE.KeyGen line 3",
+       pseudo:[
+         {ln:3, code:'y ← SampleFixedWeightVect$(XOF(seedPKE.dk), ω)', hl:true, cm:'// ω(y) = ω exactly'},
+       ]},
+      {name:"Secret Vector x",
+       math:"x ← SampleFixedWeightVect$(XOF(seedPKE.dk), ω)",
+       desc:"Sample a second independent vector x ∈ R with Hamming weight ω, using the same XOF stream (continued from y sampling). x acts as a masking term in the public syndrome s = x + h·y. Together, (x, y) form the 3-QCSD instance: recovering (x, y) from (h, s) requires solving the decisional quasi-cyclic syndrome decoding problem, believed hard even for quantum adversaries. Note: x is not stored in the decapsulation key (2025 spec revision) since it is not needed for decapsulation.",
+       color:"#f59e0b",type:"sample",
+       algRef:"PKE.KeyGen line 4",
+       pseudo:[
+         {ln:4, code:'x ← SampleFixedWeightVect$(XOF(seedPKE.dk), ω)', hl:true, cm:'// independent of y'},
+       ]},
+      {name:"Quasi-Cyclic Multiplication",
+       math:"h·y  in  R = F₂[X]/(Xⁿ−1)",
+       desc:"Binary polynomial multiplication modulo Xⁿ−1 computes h·y. Since both are elements of R, this is equivalent to computing rot(h)·yᵀ (circulant matrix-vector product). Implemented via schoolbook, Karatsuba, or Toom-Cook algorithms over packed 64-bit words. For HQC-128: degree bound n=17669, so polynomials occupy ⌈17669/64⌉ = 277 words. This is the dominant computational cost of key generation.",
+       color:"#f87171",type:"compute",
+       algRef:"PKE.KeyGen line 5 (partial)",
+       pseudo:[
+         {ln:5, code:'s ← x + h·y', hl:false, cm:'// h·y is QC polynomial multiply'},
+         {ln:'', code:'// rot(h)·yᵀ via Toom-Cook or Karatsuba', hl:false},
+       ]},
+      {name:"Syndrome Computation",
+       math:"s = x + h·y",
+       desc:"Vector addition (XOR) over F₂ⁿ completes the public syndrome. s encodes the 2-QCSD instance: the pair (h, s) is computationally indistinguishable from a uniform random pair under the DQCSD assumption. Unlike lattice-based schemes that use additive noise in ℤq, HQC works in F₂ with exact Hamming weight constraints. The syndrome s together with h forms the encryption (public) key.",
+       color:"#fb923c",type:"compute",
+       algRef:"PKE.KeyGen line 5",
+       pseudo:[
+         {ln:5, code:'s ← x + h·y', hl:true, cm:'// XOR in F₂ⁿ, core QCSD instance'},
+         {ln:6, code:'ekPKE ← (h, s)', hl:false},
+         {ln:7, code:'dkPKE ← (y, seedPKE.ek)', hl:false},
+       ]},
+      {name:"Key Encoding & Output",
+       math:"ekKEM = (h, s)   dkKEM = (ekKEM, y, σ, seedKEM)",
+       desc:"Encapsulation key: public syndrome s and random vector h (or just seedPKE.ek from which h can be regenerated). Decapsulation key bundles: the full ekKEM (for FO re-encryption check), secret vector y, implicit-rejection seed σ, and seedKEM (enables keypair validation). Note: x is omitted from dkKEM since decapsulation only needs y. The compressed format stores just seedKEM (40 bytes) since all other components are derivable.",
+       color:"#22d3ee",type:"output",
+       algRef:"KEM.KeyGen lines 3-5",
+       pseudo:[
+         {ln:3, code:'ekKEM ← ekPKE', hl:false, cm:'// (h, s)'},
+         {ln:4, code:'dkKEM ← (ekKEM, dkPKE, σ, seedKEM)', hl:true},
+         {ln:5, code:'return (ekKEM, dkKEM)', hl:false},
+       ]},
+    ],
+  },
+  {
+    id:"encaps", label:"ENCAPSULATE", color:"#f59e0b",
+    alg:"HQC-KEM.Encaps + HQC-PKE.Encrypt(ekPKE, m, θ)",
+    flows:[
+      {from:0,to:1,label:"m + salt",type:"data"},
+      {from:1,to:2,label:"θ seed",type:"data"},
+      {from:1,to:3,label:"θ seed",type:"data"},
+      {from:1,to:7,label:"K raw",type:"data"},
+      {from:2,to:5,label:"r₁, r₂",type:"seq"},
+      {from:3,to:6,label:"e",type:"data"},
+      {from:4,to:6,label:"mG",type:"seq"},
+      {from:0,to:4,label:"m bits",type:"data"},
+      {from:5,to:7,label:"u",type:"seq"},
+      {from:6,to:7,label:"v",type:"seq"},
+    ],
+    loops:[],
+    layers:[
+      {name:"Message & Salt Generation",
+       math:"m ←$ F₂ᵏ,  salt ←$ B¹⁶",
+       desc:"A random k-bit message m is drawn from the RBG (k = 128 for HQC-128). This is NOT plaintext — it is an ephemeral seed from which the shared secret and noise vectors are deterministically derived. A 16-byte salt is also sampled to provide multi-ciphertext attack resistance. The salt is transmitted in the clear alongside the ciphertext.",
+       color:"#94a3b8",type:"input",
+       algRef:"KEM.Encaps lines 1-2",
+       pseudo:[
+         {ln:1, code:'m ←$ F₂ᵏ', hl:true, cm:'// k security-parameter bits'},
+         {ln:2, code:'salt ←$ B¹⁶', hl:true, cm:'// 16-byte anti-multi-target salt'},
+       ]},
+      {name:"Noise Coin Derivation",
+       math:"(K, θ) ← SHA3-512(0x04 ‖ m ‖ ekKEM ‖ salt)",
+       desc:"SHA3-512 with domain separator 0x04 derives two 32-byte values: K (raw shared secret material) and θ (deterministic randomness coin for encryption). Including the full ekKEM binds the noise to this specific public key. Including salt prevents multi-ciphertext attacks. θ drives all ephemeral vector sampling, enabling the FO re-encryption verification in decapsulation.",
+       color:"#f59e0b",type:"expand",
+       algRef:"KEM.Encaps line 3",
+       pseudo:[
+         {ln:3, code:'(K, θ) ← SHA3-512(0x04 ‖ m ‖ ekKEM ‖ salt)', hl:true, cm:'// G hash'},
+       ]},
+      {name:"Ephemeral Vector Sampling",
+       math:"r₁ ← SampleFWV$(θ, ωr),  r₂ ← SampleFWV$(θ, ωr)",
+       desc:"Two ephemeral vectors r₁, r₂ ∈ R each with fixed Hamming weight ωr are sampled from SHAKE-256(θ). For HQC-128: ωr = 77. These are analogous to the ephemeral secret y in ML-KEM's encapsulation. r₁ masks the ciphertext u, while r₂ carries the shared structure (h·r₂ parallels h·y in keygen). Both are deterministic from θ, enabling FO re-encryption.",
+       color:"#34d399",type:"sample",
+       algRef:"PKE.Encrypt lines 1-2",
+       pseudo:[
+         {ln:1, code:'r₁ ← SampleFixedWeightVect$(XOF(θ), ωr)', hl:true},
+         {ln:2, code:'r₂ ← SampleFixedWeightVect$(XOF(θ), ωr)', hl:true, cm:'// ω(r₁)=ω(r₂)=ωr'},
+       ]},
+      {name:"Error Vector Sampling",
+       math:"e ← SampleFixedWeightVect$(XOF(θ), ωe)",
+       desc:"An error vector e ∈ R with Hamming weight ωe is sampled. For HQC-128: ωe = 77. This error masks the encoded message in v, preventing the adversary from extracting m·G directly. The total noise budget in the ciphertext channel is bounded by ω(x·r₂) + ω(y·r₁) + ω(e), which must stay within the error-correction capacity of the concatenated RMRS code.",
+       color:"#f59e0b",type:"sample",
+       algRef:"PKE.Encrypt line 3",
+       pseudo:[
+         {ln:3, code:'e ← SampleFixedWeightVect$(XOF(θ), ωe)', hl:true, cm:'// error masking vector'},
+       ]},
+      {name:"Message Encoding (RMRS)",
+       math:"c = Encode(m) via Reed-Solomon ∘ Reed-Muller",
+       desc:"The k-bit message m is encoded using a concatenated code C: an outer shortened Reed-Solomon code over GF(2⁸) followed by an inner duplicated Reed-Muller code RM(1,7). For HQC-128: the RS code is [n₁=46, k₁=16, δ=16] over GF(2⁸), the RM code is RM(1,7) with multiplicity 3, producing codewords of length n₁·n₂ = 46·384 = 17664 bits (padded to n=17669). This heavy redundancy enables correction of the noise introduced during encryption.",
+       color:"#a78bfa",type:"encode",
+       algRef:"PKE.Encrypt line 5 (implicit)",
+       pseudo:[
+         {ln:'', code:'// Concatenated RMRS encoding:', hl:false},
+         {ln:'', code:'m_rs ← RS.Encode(m)', hl:false, cm:'// [n₁,k₁,δ] over GF(2⁸)'},
+         {ln:'', code:'c ← RM.Encode(m_rs)', hl:true, cm:'// RM(1,7) ×multiplicity → n₁n₂ bits'},
+         {ln:'', code:'c ← Pad(c, n)', hl:false, cm:'// zero-pad to length n'},
+       ]},
+      {name:"Compute Ciphertext u",
+       math:"u = r₁ + h·r₂   (in R)",
+       desc:"Quasi-cyclic polynomial multiply h·r₂ followed by XOR with r₁. This parallels the keygen structure: just as s = x + h·y, here u = r₁ + h·r₂. The receiver will compute u·y to extract the shared lattice-like structure. The polynomial multiplication is the dominant cost of encryption (same Toom-Cook/Karatsuba approach as keygen).",
+       color:"#f87171",type:"compute",
+       algRef:"PKE.Encrypt line 4",
+       pseudo:[
+         {ln:4, code:'u ← r₁ + h·r₂', hl:true, cm:'// QC multiply + XOR in R'},
+       ]},
+      {name:"Compute Ciphertext v",
+       math:"v = Encode(m) + s·r₂ + e   (in R)",
+       desc:"The core encryption step: the encoded message c = Encode(m) is masked by s·r₂ (another QC polynomial multiplication using the public syndrome) and further obscured by error vector e. During decryption, v − u·y strips away the masking to reveal Encode(m) + noise. The noise terms (from the sparse secret/ephemeral interactions) remain within the RMRS code's correction capacity.",
+       color:"#f87171",type:"compute",
+       algRef:"PKE.Encrypt line 5",
+       pseudo:[
+         {ln:5, code:'v ← Encode(m) + s·r₂ + e', hl:true, cm:'// encode + mask + error'},
+         {ln:'', code:'// Truncate(v, n₁n₂) used in ciphertext', hl:false},
+       ]},
+      {name:"Output Ciphertext & Key",
+       math:"cKEM = (u, v, salt)   K = SHA3-256(0x05 ‖ K)",
+       desc:"Ciphertext: concatenation of u (n bits), Truncate(v, n₁n₂) (n₁n₂ bits), and salt (16 bytes). For HQC-128: ciphertext is ~4497 bytes total. Shared secret K is finalized via SHA3-256 with domain separator 0x05 applied to the raw K from the earlier SHA3-512 derivation. K is the 32-byte symmetric key for subsequent AEAD use.",
+       color:"#f59e0b",type:"output",
+       algRef:"KEM.Encaps lines 4-6",
+       pseudo:[
+         {ln:4, code:'cPKE ← (u, Truncate(v, n₁n₂))', hl:false},
+         {ln:5, code:'cKEM ← (cPKE, salt)', hl:false},
+         {ln:6, code:'K ← SHA3-256(0x05 ‖ K)', hl:true, cm:'// 32-byte shared secret'},
+         {ln:7, code:'return (K, cKEM)', hl:false},
+       ]},
+    ],
+  },
+  {
+    id:"decaps", label:"DECAPSULATE", color:"#34d399",
+    alg:"HQC-KEM.Decaps + HQC-PKE.Decrypt(dkPKE, cPKE)",
+    flows:[
+      {from:0,to:1,label:"u, v raw",type:"seq"},
+      {from:1,to:2,label:"u·y",type:"seq"},
+      {from:0,to:2,label:"v",type:"data"},
+      {from:2,to:3,label:"noisy cw",type:"seq"},
+      {from:3,to:4,label:"m' bits",type:"seq"},
+      {from:4,to:5,label:"pass/fail",type:"seq"},
+    ],
+    loops:[
+      {from:4,to:0,label:"FO: re-encrypt m'→c', compare c'≟c",color:"#e879f9",desc:"Salted Fujisaki-Okamoto (SFO⊥ₘ) implicit rejection: re-derive (K', θ') ← SHA3-512(0x04 ‖ m' ‖ ekKEM ‖ salt), then deterministically re-run HQC-PKE.Encrypt(ekKEM, m', θ'). All noise re-derived from θ'. If c'≠c, ciphertext was malformed. Output pseudorandom K=SHA3-256(0x05 ‖ SHA3-256(0x06 ‖ σ ‖ cKEM)) using rejection seed σ. Converts IND-CPA to IND-CCA2."},
+    ],
+    layers:[
+      {name:"Receive Ciphertext",
+       math:"cKEM = (u, v, salt)",
+       desc:"Parse the ciphertext into its components. u ∈ F₂ⁿ carries the quasi-cyclic masked ephemeral (r₁ + h·r₂). v ∈ F₂^(n₁n₂) carries the encoded-then-masked message. salt is the 16-byte value from encapsulation. Also parse decapsulation key: extract ekKEM, y (secret vector), σ (rejection seed), and seedKEM.",
+       color:"#94a3b8",type:"input",
+       algRef:"KEM.Decaps line 1",
+       pseudo:[
+         {ln:1, code:'Parse cKEM = (cPKE, salt)', hl:false},
+         {ln:'', code:'Parse cPKE = (u, v)', hl:false},
+         {ln:'', code:'— Parse dkKEM components —', hl:false},
+         {ln:2, code:'(ekKEM, dkPKE, σ, seedKEM) ← dkKEM', hl:false},
+         {ln:3, code:'(y, seedPKE.ek) ← dkPKE', hl:false, cm:'// secret vector y'},
+       ]},
+      {name:"QC Multiplication u·y",
+       math:"u·y  in  R = F₂[X]/(Xⁿ−1)",
+       desc:"Core decryption polynomial multiplication: compute u·y where u = r₁ + h·r₂ (from ciphertext) and y is the stored secret vector. Expanding: u·y = r₁·y + h·r₂·y. The term h·r₂·y matches the structure in v's masking (since s·r₂ = (x + h·y)·r₂ = x·r₂ + h·y·r₂). This shared term will cancel in the next step.",
+       color:"#f87171",type:"compute",
+       algRef:"PKE.Decrypt (implicit)",
+       pseudo:[
+         {ln:'', code:'// u·y = (r₁+h·r₂)·y = r₁·y + h·r₂·y', hl:false},
+         {ln:'', code:'tmp ← u·y', hl:true, cm:'// QC poly multiply in R'},
+       ]},
+      {name:"Subtract & Isolate",
+       math:"v − u·y = Encode(m) + x·r₂ + e − r₁·y",
+       desc:"KEY CANCELLATION: v = Encode(m) + s·r₂ + e = Encode(m) + (x+h·y)·r₂ + e. Subtracting u·y = (r₁+h·r₂)·y gives: v − u·y = Encode(m) + x·r₂ + e − r₁·y. The h·y·r₂ terms cancel exactly (all arithmetic in F₂). The residual noise x·r₂ + e − r₁·y has bounded Hamming weight since x, y, r₁, r₂, e are all sparse (fixed weight). This noise must be correctable by the RMRS code.",
+       color:"#f87171",type:"compute",
+       algRef:"PKE.Decrypt line 1",
+       pseudo:[
+         {ln:1, code:'w ← v − u·y', hl:true, cm:'// XOR; h·y·r₂ cancels'},
+         {ln:'', code:'// w = Encode(m) + (x·r₂ + e − r₁·y)', hl:false},
+         {ln:'', code:'// noise wt bounded by RMRS capacity', hl:false},
+       ]},
+      {name:"RMRS Decode",
+       math:"m' = C.Decode(v − u·y)",
+       desc:"The concatenated Reed-Muller/Reed-Solomon decoder strips the noise. First, each n₂-bit block is decoded by the duplicated RM(1,7) decoder (majority-logic decoding per bit, repeated with multiplicity). Then the outer RS decoder over GF(2⁸) corrects remaining symbol errors using Berlekamp's algorithm (syndromes → error-locator polynomial → Chien search). For HQC-128: the RMRS code corrects errors up to its designed distance, ensuring decryption failure rate (DFR) < 2⁻¹²⁸.",
+       color:"#a78bfa",type:"decode",
+       algRef:"PKE.Decrypt line 1 (Decode)",
+       pseudo:[
+         {ln:'', code:'// Step 1: RM decode each n₂-bit block', hl:false},
+         {ln:'', code:'for i in [0, n₁):', hl:false},
+         {ln:'', code:'  sym[i] ← RM.Decode(w[i·n₂ : (i+1)·n₂])', hl:true, cm:'// majority logic'},
+         {ln:'', code:'// Step 2: RS decode symbol sequence', hl:false},
+         {ln:'', code:"m' ← RS.Decode(sym)", hl:true, cm:"// Berlekamp + Chien search"},
+       ]},
+      {name:"FO Re-derive & Re-encrypt",
+       math:"(K', θ') ← G(m' ‖ ekKEM ‖ salt);  c' ← Encrypt(ekKEM, m', θ')",
+       desc:"SALTED FUJISAKI-OKAMOTO TRANSFORM: deterministically re-derive the noise coin θ' from recovered m' using the same SHA3-512 derivation as encapsulation. Then fully re-encrypt: sample r₁', r₂', e' from θ', compute u' = r₁' + h·r₂' and v' = Encode(m') + s·r₂' + e'. All noise vectors are identical to the encapsulator's if m' = m. The re-encryption is the most expensive step of decapsulation (two polynomial multiplications).",
+       color:"#e879f9",type:"verify",
+       algRef:"KEM.Decaps lines 4-6",
+       pseudo:[
+         {ln:4, code:"(K', θ') ← SHA3-512(0x04 ‖ m' ‖ ekKEM ‖ salt)", hl:true, cm:'// re-derive noise coin'},
+         {ln:5, code:"cPKE' ← HQC-PKE.Encrypt(ekKEM, m', θ')", hl:true, cm:'// full re-encryption'},
+         {ln:6, code:"if cPKE' ≠ cPKE:", hl:false},
+         {ln:7, code:"  K' ← SHA3-256(0x06 ‖ σ ‖ cKEM)", hl:true, cm:'// implicit rejection'},
+       ]},
+      {name:"Shared Secret Output",
+       math:"K = SHA3-256(0x05 ‖ K')  (match or rejection path)",
+       desc:"Match path: K = SHA3-256(0x05 ‖ K'), identical to the encapsulator's output. Rejection path: K' = SHA3-256(0x06 ‖ σ ‖ cKEM) using the secret rejection seed σ and the full ciphertext, then K = SHA3-256(0x05 ‖ K'). The adversary cannot distinguish which path was taken — σ is never revealed and the hash output is pseudorandom in both cases. This provides IND-CCA2 security via the HHK/SFO transform.",
+       color:"#34d399",type:"output",
+       algRef:"KEM.Decaps lines 8-9",
+       pseudo:[
+         {ln:8, code:'K ← SHA3-256(0x05 ‖ K\')', hl:true, cm:'// 32-byte shared secret'},
+         {ln:9, code:'return K', hl:false},
+         {ln:'', code:'', hl:false},
+         {ln:'', code:'// σ‖cKEM rejection indistinguishable', hl:false},
+       ]},
+    ],
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════
+//  LAYER SUMMARIES — plain-language one-liners for 3D cards
+// ═══════════════════════════════════════════════════════════════
+const SUMMARIES = {
+  keygen: [
+    "Draw a random seed and split it into a key-generation seed and a rejection seed via SHA3-512",
+    "Expand the public seed into a uniformly random binary polynomial h (≈17k bits)",
+    "Sample a sparse secret vector y with exactly ω set bits (Hamming-weight constrained)",
+    "Sample a second sparse secret vector x with exactly ω set bits for masking",
+    "Binary polynomial multiplication h·y in the quotient ring F₂[X]/(Xⁿ−1)",
+    "XOR x with h·y to form the public syndrome s — this is the QCSD hard instance",
+    "Bundle public key (h, s) and private key (y, σ, seedKEM) for output",
+  ],
+  encaps: [
+    "Draw a random k-bit ephemeral message m and a 16-byte salt from the RBG",
+    "Hash m with the public key and salt to get a raw shared secret K and noise coin θ",
+    "Sample two sparse ephemeral vectors r₁, r₂ with weight ωr from the noise coin",
+    "Sample a sparse error vector e with weight ωe to obscure the encoded message",
+    "Encode message m using concatenated Reed-Muller + Reed-Solomon error-correcting code",
+    "Compute first ciphertext component: u = r₁ + h·r₂ (polynomial multiply + XOR)",
+    "Compute second component: v = Encode(m) + s·r₂ + e (encode + mask + error)",
+    "Package ciphertext (u, v, salt) and derive 32-byte shared secret K via SHA3-256",
+  ],
+  decaps: [
+    "Receive and parse the ciphertext (u, v, salt) and extract secret key components",
+    "Multiply ciphertext u by secret vector y — the core decryption polynomial multiply",
+    "Subtract u·y from v to cancel shared terms, isolating encoded message + small noise",
+    "Decode via Reed-Muller (majority logic) then Reed-Solomon (Berlekamp) to recover m'",
+    "Re-derive noise from m', fully re-encrypt, and compare ciphertexts (FO transform)",
+    "Output shared secret: real key if match, pseudorandom decoy if tampered (IND-CCA2)",
+  ],
+};
+
+// Inject summaries into layer data
+PHASES.forEach(p => p.layers.forEach((l, i) => { l.summary = SUMMARIES[p.id][i]; }));
+
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
+let currentPhase = "keygen";
+let selectedIdx = 0;
+let phaseData = PHASES[0];
+let showPseudo = true;
+
+function getPhase() { return PHASES.find(p => p.id === currentPhase); }
+function setPhase(id) {
+  currentPhase = id;
+  selectedIdx = 0;
+  phaseData = getPhase();
+  rebuild();
+}
+function setSelected(i) {
+  selectedIdx = Math.max(0, Math.min(i, phaseData.layers.length - 1));
+  rebuild();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  HEADER + TABS
+// ═══════════════════════════════════════════════════════════════
+function renderHeader() {
+  const layer = phaseData.layers[selectedIdx];
+  document.getElementById('hdr-idx').textContent = String(selectedIdx+1).padStart(2,'0');
+  document.getElementById('hdr-idx').style.color = phaseData.color;
+  document.getElementById('hdr-count').textContent = ' / ' + phaseData.layers.length;
+  document.getElementById('hdr-name').textContent = layer.name;
+  document.getElementById('hdr-name').style.color = layer.color;
+  document.getElementById('fc-count').textContent = phaseData.layers.length;
+
+  // Tabs
+  const tabs = document.getElementById('phase-tabs');
+  tabs.innerHTML = '';
+  PHASES.forEach((p, pi) => {
+    const btn = document.createElement('button');
+    btn.className = 'phase-tab' + (p.id === currentPhase ? ' active' : '');
+    btn.style.color = p.id === currentPhase ? p.color : '';
+    btn.style.borderColor = p.id === currentPhase ? p.color + '30' : 'transparent';
+    btn.innerHTML = `<span class="num">${pi+1}</span>${p.label}`;
+    btn.onclick = () => setPhase(p.id);
+    tabs.appendChild(btn);
+  });
+
+  // Pseudocode toggle
+  const pcBtn = document.getElementById('pc-toggle');
+  pcBtn.className = 'pc-toggle' + (showPseudo ? ' active' : '');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SVG FLOWCHART SIDEBAR
+// ═══════════════════════════════════════════════════════════════
+function renderFlowchart() {
+  const wrap = document.getElementById('flowchart-wrap');
+  const layers = phaseData.layers;
+  const W = 360, nodeX = 50, nodeW = 230, nodeH = 34, gapY = 14;
+  const totalH = 22 + layers.length * (nodeH + gapY) + 10;
+  const getY = i => 22 + i * (nodeH + gapY);
+  const getCY = i => getY(i) + nodeH / 2;
+
+  let svg = `<svg width="${W}" height="${totalH}" xmlns="http://www.w3.org/2000/svg">`;
+  svg += `<defs>`;
+  layers.forEach((l, i) => {
+    svg += `<linearGradient id="lg${i}" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="${l.color}" stop-opacity="${selectedIdx===i?'0.2':'0.12'}"/><stop offset="100%" stop-color="${l.color}" stop-opacity="0.03"/></linearGradient>`;
+  });
+  svg += `<marker id="am" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 1L7 4L0 7Z" fill="#8899aa"/></marker>`;
+  svg += `<marker id="amc" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 1L7 4L0 7Z" fill="#e879f9"/></marker>`;
+  svg += `</defs>`;
+
+  // Sequential flows
+  phaseData.flows.filter(f => f.type==="seq" && f.to===f.from+1).forEach(f => {
+    const y1 = getY(f.from) + nodeH + 1;
+    const y2 = getY(f.to) - 1;
+    const mx = nodeX + nodeW/2;
+    const fc = layers[f.from].color;
+    svg += `<line x1="${mx}" y1="${y1}" x2="${mx}" y2="${y2}" stroke="${fc}" stroke-width="1.8" stroke-opacity="0.55" marker-end="url(#am)"/>`;
+    svg += `<text x="${mx+10}" y="${(y1+y2)/2+3}" font-size="8" font-family="'Courier New',monospace" fill="${fc}" fill-opacity="0.7">${f.label}</text>`;
+  });
+
+  // Non-sequential / data flows
+  let dataFlowIdx = 0;
+  phaseData.flows.filter(f => !(f.type==="seq" && f.to===f.from+1)).forEach(f => {
+    const fromY = getCY(f.from);
+    const toY = getCY(f.to);
+    const isLeft = dataFlowIdx % 2 === 0;
+    const side = isLeft ? nodeX - 4 : nodeX + nodeW + 4;
+    const gap = f.to - f.from;
+    const bulge = isLeft ? nodeX - 20 - gap*4 : nodeX + nodeW + 20 + gap*4;
+    const fc = layers[f.from].color;
+    const midY = (fromY + toY) / 2;
+    svg += `<path d="M${side} ${fromY} C${bulge} ${fromY},${bulge} ${toY},${side} ${toY}" fill="none" stroke="${fc}" stroke-width="1.3" stroke-opacity="0.5" stroke-dasharray="4,2" marker-end="url(#am)"/>`;
+    svg += `<text x="${bulge+(isLeft?-3:3)}" y="${midY+3}" font-size="7" font-family="'Courier New',monospace" fill="${fc}" fill-opacity="0.75" text-anchor="${isLeft?'end':'start'}">${f.label}</text>`;
+    dataFlowIdx++;
+  });
+
+  // Loop-back arcs
+  phaseData.loops.forEach(loop => {
+    const fromY = getCY(loop.from);
+    const toY = getCY(loop.to);
+    const rx = nodeX + nodeW + 40;
+    svg += `<path d="M${nodeX+nodeW+4} ${fromY} C${rx+12} ${fromY},${rx+12} ${toY},${nodeX+nodeW+4} ${toY}" fill="none" stroke="${loop.color}" stroke-width="1.8" stroke-opacity="0.65" stroke-dasharray="5,3" marker-end="url(#amc)"/>`;
+    svg += `<text x="${rx+6}" y="${(fromY+toY)/2}" font-size="7" font-family="'Courier New',monospace" fill="${loop.color}" fill-opacity="0.85" text-anchor="start" writing-mode="tb">↺ FO loop</text>`;
+  });
+
+  // Nodes
+  layers.forEach((l, i) => {
+    const y = getY(i);
+    const isSel = i === selectedIdx;
+    svg += `<g class="fc-node" onclick="setSelected(${i})">`;
+    svg += `<rect x="${nodeX}" y="${y}" width="${nodeW}" height="${nodeH}" rx="4" fill="url(#lg${i})" stroke="${l.color}" stroke-width="${isSel?1.5:0.5}" stroke-opacity="${isSel?1:0.3}"/>`;
+    svg += `<rect x="${nodeX}" y="${y}" width="3" height="${nodeH}" rx="1" fill="${l.color}" opacity="${isSel?1:0.3}"/>`;
+    svg += `<text x="${nodeX+10}" y="${y+13}" font-size="8" font-family="'Courier New',monospace" fill="${l.color}" opacity="${isSel?1:0.5}">${String(i+1).padStart(2,'0')}</text>`;
+    svg += `<text x="${nodeX+26}" y="${y+13}" font-size="9.5" font-family="'Segoe UI',sans-serif" font-weight="${isSel?'bold':'normal'}" fill="${isSel?l.color:'#8896a6'}">${l.name}</text>`;
+    const mathTrunc = l.math.length > 40 ? l.math.slice(0,40)+'…' : l.math;
+    svg += `<text x="${nodeX+10}" y="${y+27}" font-size="8" font-family="'Courier New',monospace" fill="${isSel?'#cbd5e1':'#475569'}">${escHtml(mathTrunc)}</text>`;
+    svg += `</g>`;
+  });
+
+  svg += `</svg>`;
+  wrap.innerHTML = svg;
+
+  requestAnimationFrame(() => {
+    const node = wrap.querySelectorAll('.fc-node')[selectedIdx];
+    if (node) node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ═══════════════════════════════════════════════════════════════
+//  PSEUDOCODE PANEL
+// ═══════════════════════════════════════════════════════════════
+function renderPseudocode() {
+  const el = document.getElementById('pseudocode');
+  const inner = document.getElementById('pc-inner');
+  el.className = showPseudo ? 'open' : '';
+  if (!showPseudo) return;
+
+  const layer = phaseData.layers[selectedIdx];
+  if (!layer.pseudo || !layer.pseudo.length) {
+    inner.innerHTML = `<div class="pc-title">PSEUDOCODE <span class="pc-ref">${layer.algRef || ''}</span></div><div class="pc-code" style="color:var(--textdark)">No pseudocode for this layer</div>`;
+    return;
+  }
+
+  let html = `<div class="pc-title">PSEUDOCODE <span class="pc-ref">· HQC ${layer.algRef || ''}</span></div>`;
+  html += `<div class="pc-code">`;
+  layer.pseudo.forEach(p => {
+    const lnStr = p.ln !== '' && p.ln !== undefined ? String(p.ln).padStart(2,' ') : '  ';
+    const cmStr = p.cm ? ` <span class="pc-cm">${escHtml(p.cm)}</span>` : '';
+    if (p.hl) {
+      html += `<div><span class="pc-ln">${lnStr}</span><span class="pc-hl">${escHtml(p.code)}</span>${cmStr}</div>`;
+    } else {
+      html += `<div><span class="pc-ln">${lnStr}</span>${escHtml(p.code)}${cmStr}</div>`;
+    }
+  });
+  html += `</div>`;
+  inner.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DETAIL PANEL
+// ═══════════════════════════════════════════════════════════════
+function renderDetail() {
+  const el = document.getElementById('detail');
+  const layer = phaseData.layers[selectedIdx];
+  el.style.background = layer.color + '08';
+
+  const incoming = (phaseData.flows||[]).filter(f => f.to === selectedIdx);
+  const outgoing = (phaseData.flows||[]).filter(f => f.from === selectedIdx);
+  const loop = (phaseData.loops||[]).find(l => l.from === selectedIdx);
+
+  let html = `<div class="det-header"><div class="det-dot" style="background:${layer.color}"></div><span class="det-name" style="color:${layer.color}">${layer.name}</span>`;
+  if (layer.algRef) html += `<span class="det-alg">${layer.algRef}</span>`;
+  html += `<span class="det-type">${layer.type}</span></div>`;
+  if (layer.summary) {
+    html += `<div style="font-size:10px;color:#8896a6;font-style:italic;margin-bottom:5px;line-height:1.5">▸ ${layer.summary}</div>`;
+  }
+  html += `<div class="det-math" style="border-color:${layer.color}20">${escHtml(layer.math)}</div>`;
+  html += `<div class="det-desc">${layer.desc}</div>`;
+
+  if (incoming.length || outgoing.length) {
+    html += `<div class="flow-links" style="border-top:1px solid ${layer.color}15">`;
+    if (incoming.length) {
+      html += `<div style="margin-bottom:4px"><span class="fl-label">← IN: </span>`;
+      incoming.forEach(f => {
+        const fc = phaseData.layers[f.from].color;
+        html += `<span class="fl-badge" onclick="setSelected(${f.from})" style="color:${fc};background:${fc}15;border:1px solid ${fc}30">${escHtml(f.label)} ← ${String(f.from+1).padStart(2,'0')}</span>`;
+      });
+      html += `</div>`;
+    }
+    if (outgoing.length) {
+      html += `<div><span class="fl-label">→ OUT: </span>`;
+      outgoing.forEach(f => {
+        const tc = phaseData.layers[f.to].color;
+        html += `<span class="fl-badge" onclick="setSelected(${f.to})" style="color:${tc};background:${tc}15;border:1px solid ${tc}30">${escHtml(f.label)} → ${String(f.to+1).padStart(2,'0')}</span>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  if (loop) {
+    html += `<div class="loop-box" style="background:${loop.color}10;border:1px solid ${loop.color}25"><div class="loop-title" style="color:${loop.color}">↺ ITERATION LOOP</div><div class="loop-desc">${loop.desc}</div></div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  THREE.JS 3D SCENE
+// ═══════════════════════════════════════════════════════════════
+let scene, camera, renderer, clock;
+let camAngle = { theta: 0.45, phi: 0.55 };
+let camAngleTarget = { theta: 0.45, phi: 0.55 };
+let camTargetY = 0;
+let isDrag = false, dragStart = { x:0, y:0 };
+let camDist = 9;
+const SPACING = 1.8, SLAB_W = 6.4, SLAB_H = 0.09, SLAB_D = 3.0;
+
+function makeCanvasTex(drawFn, w, h) {
+  const S = 2, c = document.createElement('canvas');
+  c.width = w*S; c.height = h*S;
+  const ctx = c.getContext('2d');
+  ctx.scale(S, S);
+  drawFn(ctx, w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.anisotropy = 4;
+  return t;
+}
+
+function wrapTextCanvas(ctx, text, x, y, maxW, lh, maxLines) {
+  const words = text.split(' ');
+  let line = '', ly = y, n = 0;
+  for (const w of words) {
+    const test = line + (line?' ':'')+w;
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line, x, ly);
+      line = w; ly += lh; n++;
+      if (maxLines && n >= maxLines) { ctx.fillText(line+'…', x, ly); return; }
+    } else line = test;
+  }
+  if (line) ctx.fillText(line, x, ly);
+}
+
+function layerTex(layer, isSel) {
+  const hasPseudo = isSel && layer.pseudo && layer.pseudo.length > 0;
+  const hasSummary = !!layer.summary;
+  const texH = hasPseudo ? 280 : (hasSummary ? 160 : 120);
+  return makeCanvasTex((ctx, W, H) => {
+    ctx.fillStyle = isSel ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.4)';
+    ctx.beginPath(); ctx.roundRect(0,0,W,H,5); ctx.fill();
+    ctx.fillStyle = layer.color;
+    ctx.fillRect(0,0,4,H);
+    if (isSel) { ctx.strokeStyle = layer.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(1,1,W-2,H-2,5); ctx.stroke(); }
+    ctx.font = 'bold 9px monospace'; ctx.textAlign = 'right';
+    ctx.fillStyle = layer.color+'40';
+    const bw = ctx.measureText(layer.type.toUpperCase()).width+14;
+    ctx.beginPath(); ctx.roundRect(W-bw-6,6,bw,14,3); ctx.fill();
+    ctx.fillStyle = layer.color;
+    ctx.fillText(layer.type.toUpperCase(), W-10, 16);
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = layer.color;
+    ctx.fillText(layer.name, 14, 18);
+
+    let yOff = 0;
+    if (hasSummary) {
+      ctx.font = 'italic 10px sans-serif';
+      ctx.fillStyle = isSel ? '#b0bec5' : '#6b7a8d';
+      wrapTextCanvas(ctx, '▸ ' + layer.summary, 14, 32, W-28, 12, 3);
+      yOff = 26;
+    }
+
+    ctx.font = '13px monospace';
+    ctx.fillStyle = isSel ? '#ffffff' : '#cbd5e1';
+    wrapTextCanvas(ctx, layer.math, 14, 40 + yOff, W-28, 15, 3);
+    if (isSel) { ctx.font = '10px sans-serif'; ctx.fillStyle = '#8899aa'; wrapTextCanvas(ctx, layer.desc, 14, 72 + yOff, W-28, 12, 4); }
+
+    if (hasPseudo) {
+      const pcY0 = 126 + yOff;
+      ctx.strokeStyle = layer.color + '30';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(14, pcY0); ctx.lineTo(W-14, pcY0); ctx.stroke();
+      ctx.font = 'bold 8px monospace';
+      ctx.fillStyle = layer.color + '80';
+      ctx.fillText('PSEUDOCODE · HQC ' + (layer.algRef || ''), 14, pcY0 + 10);
+      ctx.font = '10px monospace';
+      let ly = pcY0 + 24;
+      const maxPcLines = 8;
+      const pcLines = layer.pseudo.slice(0, maxPcLines);
+      pcLines.forEach(p => {
+        const lnStr = (p.ln !== '' && p.ln !== undefined) ? String(p.ln).padStart(2,' ') : '  ';
+        ctx.fillStyle = '#334155';
+        ctx.fillText(lnStr, 14, ly);
+        if (p.hl) {
+          const codeText = p.code;
+          const textW = ctx.measureText(codeText).width;
+          ctx.fillStyle = layer.color + '12';
+          ctx.fillRect(36, ly - 9, textW + 6, 13);
+          ctx.fillStyle = '#e2e8f0';
+          ctx.fillText(codeText, 38, ly);
+        } else {
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillText(p.code, 38, ly);
+        }
+        if (p.cm) {
+          const codeW = ctx.measureText(p.code).width;
+          ctx.fillStyle = '#334155';
+          ctx.font = 'italic 9px monospace';
+          ctx.fillText(p.cm, 42 + codeW, ly);
+          ctx.font = '10px monospace';
+        }
+        ly += 14;
+      });
+      if (layer.pseudo.length > maxPcLines) {
+        ctx.fillStyle = '#334155';
+        ctx.font = 'italic 9px monospace';
+        ctx.fillText('... +' + (layer.pseudo.length - maxPcLines) + ' more lines', 38, ly);
+      }
+    }
+  }, 640, texH);
+}
+
+function flowLabel3D(text, color) {
+  return makeCanvasTex((ctx, W, H) => {
+    ctx.fillStyle = 'rgba(8,12,20,0.85)';
+    ctx.beginPath(); ctx.roundRect(0,0,W,H,3); ctx.fill();
+    ctx.strokeStyle = color+'60'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(0,0,W,H,3); ctx.stroke();
+    ctx.font = 'bold 9px monospace'; ctx.fillStyle = color;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, W/2, H/2);
+  }, 180, 18);
+}
+
+function clearSceneObjects() {
+  while (scene.children.length > 3) scene.remove(scene.children[scene.children.length-1]);
+}
+
+function build3D() {
+  clearSceneObjects();
+  const layers = phaseData.layers;
+
+  // Layer slabs
+  layers.forEach((layer, i) => {
+    const g = new THREE.Group();
+    const isSel = i === selectedIdx;
+    const c = new THREE.Color(layer.color);
+
+    const hasPseudo = isSel && layer.pseudo && layer.pseudo.length > 0;
+    const hasSummary = !!layer.summary;
+    const slabD = hasPseudo ? SLAB_D * 2.4 : (hasSummary ? SLAB_D * 1.5 : SLAB_D);
+
+    const geo = new THREE.BoxGeometry(SLAB_W, isSel?SLAB_H*2.2:SLAB_H, slabD);
+    const mat = new THREE.MeshPhongMaterial({ color: c.clone().multiplyScalar(isSel?0.4:0.18), transparent:true, opacity:isSel?0.88:0.5, specular:c.clone().multiplyScalar(0.3), shininess:50 });
+    g.add(new THREE.Mesh(geo, mat));
+    g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:c, transparent:true, opacity:isSel?0.8:0.25 })));
+
+    const tex = layerTex(layer, isSel);
+    const panelD = hasPseudo ? slabD * 0.92 : slabD * 0.88;
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(SLAB_W*0.94, panelD), new THREE.MeshBasicMaterial({ map:tex, transparent:true, opacity:isSel?1:0.85, side:THREE.DoubleSide, depthWrite:false }));
+    panel.position.y = (isSel?SLAB_H*1.1:SLAB_H/2)+0.004;
+    panel.rotation.x = -Math.PI/2;
+    g.add(panel);
+
+    const fTex = makeCanvasTex((ctx, W, H) => {
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = isSel ? layer.color : '#3e4a5a';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(i+1).padStart(2,'0')+'  '+layer.name, W/2, H/2);
+    }, 400, 18);
+    const fm = new THREE.Mesh(new THREE.PlaneGeometry(SLAB_W*0.85, SLAB_H*1.3), new THREE.MeshBasicMaterial({ map:fTex, transparent:true, opacity:0.9, side:THREE.DoubleSide, depthWrite:false }));
+    fm.position.z = slabD/2+0.004;
+    g.add(fm);
+
+    if (isSel) {
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(SLAB_W+0.6, slabD+0.6), new THREE.MeshBasicMaterial({ color:c, transparent:true, opacity:0.07, side:THREE.DoubleSide }));
+      glow.position.y = -SLAB_H-0.01; glow.rotation.x = -Math.PI/2;
+      g.add(glow);
+    }
+
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(isSel?0.13:0.06,12,12), new THREE.MeshBasicMaterial({ color:c, transparent:true, opacity:isSel?1:0.4 }));
+    orb.position.set(-SLAB_W/2-0.3, 0, 0);
+    g.add(orb);
+
+    g.position.y = -i*SPACING;
+    scene.add(g);
+  });
+
+  // Flow arrows
+  (phaseData.flows||[]).forEach((flow, fi) => {
+    const y0 = -flow.from*SPACING - SLAB_H/2 - 0.06;
+    const y1 = -flow.to*SPACING + SLAB_H/2 + 0.06;
+    const isSeq = flow.type==='seq';
+    const gap = flow.to - flow.from;
+    const isSkip = gap > 1;
+    let xOff = 0;
+    if (!isSeq || isSkip) xOff = (fi%2===0?-1:1)*(1.5+(isSkip?gap*0.3:0));
+
+    const fromC = new THREE.Color(layers[flow.from].color);
+    const toC = new THREE.Color(layers[flow.to].color);
+    const midC = fromC.clone().lerp(toC, 0.5);
+
+    const pts = [];
+    for (let j=0; j<=24; j++) {
+      const t = j/24;
+      const y = y0+(y1-y0)*t;
+      const bulge = Math.sin(t*Math.PI);
+      pts.push(new THREE.Vector3(xOff*bulge, y, (isSkip?-0.3:0)*bulge));
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+
+    const thick = isSeq?0.025:0.018;
+    const op = isSeq?0.7:0.5;
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve,20,thick,6,false), new THREE.MeshBasicMaterial({ color:midC, transparent:true, opacity:op })));
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve,16,thick*3,6,false), new THREE.MeshBasicMaterial({ color:midC, transparent:true, opacity:0.08, blending:THREE.AdditiveBlending, depthWrite:false })));
+
+    const endPt = curve.getPointAt(0.97);
+    const prevPt = curve.getPointAt(0.93);
+    const dir = new THREE.Vector3().subVectors(endPt, prevPt).normalize();
+    const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.06,0.14,5), new THREE.MeshBasicMaterial({ color:midC, transparent:true, opacity:0.85 }));
+    arrow.position.copy(endPt);
+    arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+    scene.add(arrow);
+
+    [0.3, 0.6].forEach(ct => {
+      const cp = curve.getPointAt(ct);
+      const cpPrev = curve.getPointAt(ct-0.03);
+      const cDir = new THREE.Vector3().subVectors(cp, cpPrev).normalize();
+      const chev = new THREE.Mesh(new THREE.ConeGeometry(0.03,0.07,4), new THREE.MeshBasicMaterial({ color:midC, transparent:true, opacity:0.45 }));
+      chev.position.copy(cp);
+      chev.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), cDir);
+      scene.add(chev);
+    });
+
+    if (flow.label) {
+      const lPos = curve.getPointAt(0.5);
+      const lTex = flowLabel3D(flow.label, midC.getStyle());
+      const lm = new THREE.Mesh(new THREE.PlaneGeometry(1.3,0.14), new THREE.MeshBasicMaterial({ map:lTex, transparent:true, opacity:0.95, side:THREE.DoubleSide, depthWrite:false }));
+      lm.position.copy(lPos);
+      lm.position.x += (xOff>=0?0.75:-0.75);
+      scene.add(lm);
+    }
+  });
+
+  // Loops
+  (phaseData.loops||[]).forEach(loop => {
+    const y0 = -loop.from*SPACING, y1 = -loop.to*SPACING;
+    const c = new THREE.Color(loop.color||'#e879f9');
+    const xB = 4.8;
+    const pts = [];
+    for (let j=0; j<=50; j++) {
+      const t=j/50;
+      const bulge = Math.sin(t*Math.PI);
+      pts.push(new THREE.Vector3(xB*bulge, y0+(y1-y0)*t, -0.5*bulge));
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+
+    for (let s=0; s<80; s++) {
+      if (s%4===3) continue;
+      const t0=s/80, t1=(s+1)/80;
+      const p0=curve.getPointAt(t0), p1=curve.getPointAt(t1);
+      const mid=p0.clone().lerp(p1,0.5);
+      scene.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([p0,mid,p1]),3,0.02,4,false), new THREE.MeshBasicMaterial({ color:c, transparent:true, opacity:0.55 })));
+    }
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve,30,0.06,6,false), new THREE.MeshBasicMaterial({ color:c, transparent:true, opacity:0.06, blending:THREE.AdditiveBlending, depthWrite:false })));
+
+    const endPt = curve.getPointAt(0.98), prevPt = curve.getPointAt(0.94);
+    const dir = new THREE.Vector3().subVectors(endPt,prevPt).normalize();
+    const arr = new THREE.Mesh(new THREE.ConeGeometry(0.07,0.18,5), new THREE.MeshBasicMaterial({ color:c, transparent:true, opacity:0.8 }));
+    arr.position.copy(endPt);
+    arr.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+    scene.add(arr);
+
+    const apex = curve.getPointAt(0.5);
+    const lt = flowLabel3D(loop.label, c.getStyle());
+    const lm = new THREE.Mesh(new THREE.PlaneGeometry(2.6,0.16), new THREE.MeshBasicMaterial({ map:lt, transparent:true, opacity:0.95, side:THREE.DoubleSide, depthWrite:false }));
+    lm.position.copy(apex); lm.position.x += 0.8;
+    scene.add(lm);
+  });
+
+  // Particles
+  const count = 90;
+  const pGeo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count*3);
+  const cols = new Float32Array(count*3);
+  const yMin = -(layers.length-1)*SPACING-1, yMax = 1;
+  for (let i=0; i<count; i++) {
+    pos[i*3]=(Math.random()-0.5)*5;
+    pos[i*3+1]=yMin+Math.random()*(yMax-yMin);
+    pos[i*3+2]=(Math.random()-0.5)*2.5;
+    const cl = new THREE.Color(layers[Math.floor(Math.random()*layers.length)].color);
+    cols[i*3]=cl.r; cols[i*3+1]=cl.g; cols[i*3+2]=cl.b;
+  }
+  pGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  pGeo.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
+  const particles = new THREE.Points(pGeo, new THREE.PointsMaterial({ size:0.04, vertexColors:true, transparent:true, opacity:0.45, blending:THREE.AdditiveBlending, depthWrite:false }));
+  particles.userData = { yMin, yMax };
+  scene.add(particles);
+
+  camTargetY = -selectedIdx * SPACING;
+}
+
+function initThree() {
+  const vp = document.getElementById('viewport');
+  const w = vp.clientWidth, h = vp.clientHeight;
+
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x080c14, 0.012);
+  scene.add(new THREE.AmbientLight(0x556677, 1.0));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.35);
+  dl.position.set(4,12,6); scene.add(dl);
+  const pl = new THREE.PointLight(0x22d3ee, 0.2, 30);
+  pl.position.set(-5,2,5); scene.add(pl);
+
+  camera = new THREE.PerspectiveCamera(38, w/h, 0.1, 100);
+  renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x080c14, 1);
+  vp.insertBefore(renderer.domElement, vp.firstChild);
+
+  clock = new THREE.Clock();
+
+  vp.addEventListener('wheel', e => {
+    e.preventDefault();
+    camDist = Math.max(5, Math.min(16, camDist + e.deltaY * 0.008));
+  }, { passive: false });
+
+  vp.addEventListener('pointerdown', e => { isDrag=true; dragStart={x:e.clientX,y:e.clientY}; });
+  vp.addEventListener('pointerup', () => isDrag=false);
+  vp.addEventListener('pointermove', e => {
+    if (!isDrag) return;
+    camAngleTarget.theta += (e.clientX-dragStart.x)*0.004;
+    camAngleTarget.phi = Math.max(-0.3, Math.min(1.1, camAngleTarget.phi+(e.clientY-dragStart.y)*0.004));
+    dragStart = {x:e.clientX, y:e.clientY};
+  });
+
+  window.addEventListener('resize', () => {
+    const nw = vp.clientWidth, nh = vp.clientHeight;
+    camera.aspect = nw/nh;
+    camera.updateProjectionMatrix();
+    renderer.setSize(nw, nh);
+  });
+
+  animate();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  const R = camDist;
+
+  camAngle.theta += (camAngleTarget.theta - camAngle.theta)*0.08;
+  camAngle.phi += (camAngleTarget.phi - camAngle.phi)*0.08;
+  camera.position.x = R*Math.sin(camAngle.theta)*Math.cos(camAngle.phi);
+  camera.position.z = R*Math.cos(camAngle.theta)*Math.cos(camAngle.phi);
+  const tgtY = camTargetY + R*Math.sin(camAngle.phi);
+  camera.position.y += (tgtY - camera.position.y)*0.10;
+  camera.lookAt(0, camTargetY, 0);
+
+  scene.children.forEach(child => {
+    if (child instanceof THREE.Points && child.userData.yMin !== undefined) {
+      const pos = child.geometry.attributes.position;
+      const {yMin, yMax} = child.userData;
+      for (let i=0; i<pos.count; i++) {
+        let y = pos.getY(i)-0.003;
+        if (y < yMin) y = yMax;
+        pos.setY(i, y);
+        pos.setX(i, pos.getX(i) + Math.sin(t+i)*0.0006);
+      }
+      pos.needsUpdate = true;
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  KEYBOARD
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener('keydown', e => {
+  if (e.key==='ArrowDown'||e.key==='j') { e.preventDefault(); setSelected(selectedIdx+1); }
+  else if (e.key==='ArrowUp'||e.key==='k') { e.preventDefault(); setSelected(selectedIdx-1); }
+  else if (e.key==='1') setPhase('keygen');
+  else if (e.key==='2') setPhase('encaps');
+  else if (e.key==='3') setPhase('decaps');
+  else if (e.key==='p') {
+    showPseudo = !showPseudo;
+    rebuild();
+  }
+});
+
+document.getElementById('btn-up').onclick = () => setSelected(selectedIdx-1);
+document.getElementById('btn-down').onclick = () => setSelected(selectedIdx+1);
+document.getElementById('pc-toggle').onclick = () => { showPseudo = !showPseudo; rebuild(); };
+
+// ═══════════════════════════════════════════════════════════════
+//  REBUILD ALL
+// ═══════════════════════════════════════════════════════════════
+function rebuild() {
+  phaseData = getPhase();
+  renderHeader();
+  renderFlowchart();
+  renderPseudocode();
+  renderDetail();
+  build3D();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  initThree();
+  rebuild();
+});
+</script>
+</body>
+</html>
